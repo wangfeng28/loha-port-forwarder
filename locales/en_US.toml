@@ -1,0 +1,819 @@
+[meta]
+locale = "en_US"
+fallback = "en_US"
+name = "English"
+
+[messages.common]
+invalid_choice = "Invalid choice."
+cancelled = "Cancelled."
+error = "ERROR: {message}"
+back = "Back"
+exit = "Exit"
+already_applied = "Already applied."
+
+[messages.common.state]
+on = "enabled"
+off = "disabled"
+
+[messages.common.check]
+would_change = "Check mode: changes would be applied, but nothing was written."
+no_change = "Check mode: no changes would be needed."
+
+[messages.install.language]
+title = "LOHA Port Forwarder Language Selection"
+description = "Choose installer language."
+prompt = "Enter number or locale code (press Enter for {recommended})"
+recommended_suffix = "(recommended)"
+
+[messages.install.import]
+title = "Import Existing Configuration"
+description = "Choose which existing configuration to start from."
+prompt_default = "Choice (press Enter for {default_token})"
+fresh = "Start from recommended defaults"
+
+[messages.install.import.option]
+repo = "Repository loha.conf: {path}"
+system = "Installed loha.conf: {path}"
+
+[messages.install.precheck]
+title = "Install Prechecks"
+root_ok = "Running as root"
+root_fail = "Installer must run as root"
+dep_ok = "Dependency: {name} found"
+dep_missing = "Dependency: {name} missing"
+asset_ok = "Asset: {path} found"
+asset_missing = "Asset: {path} missing"
+kernel_ok = "Kernel: {version} meets >= 5.6"
+kernel_low = "Kernel: {version} is below 5.6"
+nft_ok = "nftables: {version} meets >= 0.9.4"
+nft_low = "nftables: {version} is below 0.9.4"
+nft_unknown = "nftables: unable to determine version"
+systemd_ok = "systemd: unit-file listing succeeded"
+systemd_fail = "systemd: unable to query unit files"
+ct_label_ok = "nftables supports ct label"
+ct_label_warn = "nftables ct label check failed; label mode may be unavailable"
+dry_run = "Dry-run mode: installation changes will not be applied"
+fail_summary = "Prechecks failed: {count}"
+warn_summary = "Prechecks completed with {count} warning(s)"
+all_pass = "All install prechecks passed."
+exit_prompt = "Press Enter to exit"
+
+[messages.install.summary]
+title = "Install Summary"
+description = "Review the planned installation and choose how to proceed."
+
+[messages.install.summary.fields]
+locale = "Language"
+
+[messages.install.summary.options]
+confirm = "Confirm and install"
+network = "Return to network topology"
+exposure = "Return to exposure and protection"
+egress = "Return to default egress NAT"
+advanced = "Return to advanced settings"
+cancel = "Cancel installation"
+
+[messages.install.dry_run]
+notice = "[dry-run] filesystem changes were not applied"
+mkdir = "[dry-run] mkdir -p {path}"
+copy = "[dry-run] copy {src} -> {dst}"
+touch = "[dry-run] touch {path}"
+write = "[dry-run] write {path}"
+remove = "[dry-run] remove {path}"
+sysctl = "[dry-run] sysctl --system"
+daemon_reload = "[dry-run] systemctl daemon-reload"
+stop = "[dry-run] systemctl stop {unit}"
+disable = "[dry-run] systemctl disable {unit}"
+enable = "[dry-run] systemctl enable {unit}"
+restart = "[dry-run] systemctl restart {unit}"
+nft_destroy = "[dry-run] nft destroy table ip loha_port_forwarder"
+
+[messages.install]
+completed = "Installation files are in place."
+upstream_fw = "Detected upstream firewall target: {target}"
+cancelled = "Installation was cancelled before applying changes."
+recovery_completed = "Install recovery completed; partial changes were rolled back."
+recovery_prepare_failed = "Install recovery preparation failed: {error}"
+recovery_failed = "Install recovery failed: {error}"
+
+[messages.install.deploy]
+failed = "Install filesystem deployment failed: {error}"
+
+[messages.install.system_features]
+file_apply_failed = "Failed to write install system-feature files: {error}"
+sysctl_missing = "Install cannot apply system-feature runtime state because `sysctl` is unavailable."
+sysctl_failed = "Install system-feature apply failed during `sysctl --system`: {error}"
+
+[messages.install.service]
+systemctl_missing = "Install cannot activate loha.service because `systemctl` is unavailable."
+action_failed = "Install service activation failed during `{command}`: {error}"
+
+[messages.install.history]
+write_failed = "Install snapshot write failed: {error}"
+
+[messages.install.uninstall]
+prompt = "Remove installed LOHA files? [y/N]: "
+data_prompt = "Delete all user configuration data ({path})? [y/N]: "
+system_tuning_prompt = "Remove kernel network tuning parameters ({nat}, {conntrack}, {modprobe})? [y/N]: "
+completed = "LOHA has been removed from the system."
+remove_failed = "Failed to remove installed LOHA files: {error}"
+
+[messages.menu]
+choice = "Choice"
+
+[messages.menu.main]
+status = "List current status and rules"
+alias = "Manage aliases"
+add_port = "Add port forwarding rule"
+del_port = "Delete port forwarding rule"
+edit = "Edit rules.conf"
+reload = "Apply rules (reload)"
+rendered_rules = "Preview rendered nft rules (current config)"
+advanced = "Advanced settings"
+change_language = "Change Language"
+
+[messages.menu.prompt]
+enter_back = "Enter a number to choose, or press Enter to go back"
+
+[messages.menu.setting]
+current_status = "Current status: {status}"
+current_value = "Current setting: {value}"
+
+[messages.menu.alias]
+title = "Manage Aliases"
+add = "Add alias"
+remove = "Remove alias"
+name_prompt = "Alias name"
+ip_prompt = "IPv4 address"
+
+[messages.menu.port_add]
+title = "Add Port Forwarding Rule"
+orig_prompt = "Original port spec"
+dest_prompt = "Destination alias or IPv4"
+dest_port_prompt = "Destination port spec [default=orig]"
+listener_scan_unavailable = "Local listener scan is unavailable. Continue anyway? [y/N]"
+listener_conflict_confirm = "Local listener conflict detected on {proto} {ports}. Continue anyway? [y/N]"
+
+[messages.menu.port_add.protocol]
+tcp = "TCP"
+udp = "UDP"
+
+[messages.menu.port_del]
+title = "Delete Port Forwarding Rule"
+orig_prompt = "Original port spec"
+
+[messages.menu.edit]
+editor_invalid = "EDITOR must resolve to a single executable path or name."
+editor_missing = "Editor not found: {editor}"
+launch_fail = "Editor exited with status {code}: {editor}"
+warning_intro = "This opens the raw rules.conf editor and is intended for advanced users."
+warning_recommendation = "For routine changes, prefer the alias and port menus."
+warning_validation = "LOHA will validate rules.conf after the editor exits."
+continue_prompt = "Continue editing rules.conf? [y/N]"
+validating = "Validating edited rules.conf..."
+pass = "rules.conf validation passed."
+fail = "rules.conf validation failed."
+
+[messages.menu.advanced]
+title = "Advanced Settings"
+current_status = "Current Status"
+config_wizard = "Configuration Wizard"
+config_history = "Configuration History / Rollback"
+rpfilter = "Advanced NAT Support (rp_filter)"
+conntrack = "Connection Capacity Tuning (conntrack)"
+auth_mode = "Switch Authorization Marking (mark / label)"
+wan_to_wan = "WAN-to-WAN Forwarding"
+tcpmss_clamp = "Automatic TCP MSS Adjustment"
+counter_mode = "nftables Rule Counters"
+strict_validation = "Strict Internal Source Validation"
+
+[messages.menu.language]
+title = "LOHA Language"
+description = "Choose the LOHA interface language."
+prompt = "Enter number or locale code (press Enter for {recommended})"
+
+[messages.menu.rpfilter]
+title = "rp_filter"
+system = "System"
+strict = "Strict"
+loose_scoped = "Loose Scoped"
+loose_global = "Loose Global"
+
+[messages.menu.conntrack]
+title = "Conntrack"
+status = "Status"
+profile = "Profile"
+auto = "Auto"
+custom = "Custom"
+system = "System"
+profile_prompt = "Conntrack profile"
+peak_prompt = "Estimated peak concurrent connections"
+memory_prompt = "Memory share for connection tracking"
+max_prompt = "Maximum concurrent connections"
+
+[messages.history.menu]
+title = "Configuration History / Rollback"
+status = "Automatic snapshots: {status}"
+toggle_enable = "Enable automatic configuration snapshots"
+toggle_disable = "Disable automatic configuration snapshots"
+show = "View configuration history"
+rollback_latest = "Roll back latest snapshot"
+rollback_index = "Roll back by history index"
+index_prompt = "Enter history index to restore"
+index_invalid = "History index must be a positive integer."
+
+[messages.history.rollback]
+apply_prompt = "Apply restored configuration immediately with `loha reload`? [y/N]"
+rescue_files = "Rollback rescue files were kept in: {path}"
+rescue_hint = "Review or copy the full rescue paths from the terminal output above if manual recovery is needed."
+latest_restored = "The latest configuration snapshot has been restored."
+checkpoint_restored = "The rollback checkpoint has been restored."
+index_restored = "Configuration history entry {selector} has been restored."
+reload_hint = "Run `loha reload` to apply the restored configuration."
+
+[messages.wizard.command]
+saved = "Core configuration has been written."
+reload_hint = "Run `loha reload` to apply the updated configuration."
+cancelled = "The configuration wizard was cancelled."
+
+[messages.history.status]
+enabled = "enabled"
+disabled = "disabled"
+
+[messages.history.command]
+status = "Automatic snapshots: {status}"
+enabled = "Automatic configuration snapshots have been enabled."
+disabled = "Automatic configuration snapshots have been disabled."
+
+[messages.history.list]
+title = "Configuration History"
+empty = "No snapshots."
+checkpoint_title = "Rollback checkpoint"
+checkpoint_note = "Not counted in regular history limit."
+source = "Source"
+reason = "Reason"
+config_hash = "Config hash"
+rules_hash = "Rules hash"
+
+[messages.list]
+title = "LOHA summary"
+external_interface = "External interface"
+listen_ips = "External IPv4 addresses used for exposure"
+lan_nets = "Internal networks"
+aliases = "Aliases"
+ports = "Ports"
+none = "(none)"
+
+[messages.wizard.option]
+recommended = "(recommended)"
+current = "(current)"
+manual = "Enter custom value"
+
+[messages.wizard.prompt]
+menu_default = "Enter a number to choose, or press Enter for {default_token}"
+multi_default = "Enter comma-separated numbers ({default_display})"
+multi = "Enter comma-separated numbers"
+multi_or_manual_default = "Enter comma-separated menu numbers, or enter values directly ({default_display})"
+multi_or_manual = "Enter comma-separated menu numbers, or enter values directly"
+text_default = "{placeholder} [{default_value}]"
+
+[messages.wizard.error]
+invalid_multi_selection = "Invalid selection."
+required_selection = "At least one value is required."
+required_value = "A value is required."
+
+[messages.wizard.placeholder]
+interface = "interface"
+ipv4_csv = "ipv4,ipv4"
+iface_csv = "iface,iface"
+cidr_csv = "cidr,cidr"
+integer = "integer"
+
+[messages.wizard.external_interface]
+manual = "Enter the external interface name."
+
+[messages.wizard.internal_interfaces]
+manual = "Enter one or more internal interfaces, separated by commas."
+
+[messages.wizard.advanced]
+title = "Advanced Settings"
+description = "Use the recommended advanced settings, or adjust them manually."
+
+[messages.wizard.advanced.options]
+recommended = "Use recommended settings"
+manual = "Adjust manually"
+
+[messages.wizard.gateway]
+title = "Advanced Gateway Settings"
+description = "Review gateway-facing NAT and system-integration settings."
+
+[messages.wizard.gateway.options]
+configure = "Configure now"
+skip = "Skip for now"
+
+[messages.wizard.confirm]
+title = "Confirm Configuration"
+description = "Choose how to proceed."
+
+[messages.wizard.confirm.options]
+confirm = "Confirm"
+network = "Back to network topology"
+exposure = "Back to exposure and protection"
+egress = "Back to default egress NAT"
+advanced = "Back to advanced settings"
+cancel = "Cancel"
+
+[messages.wizard.cli_confirm]
+title = "Save Configuration"
+description = "Review the configuration and choose how to proceed."
+
+[messages.wizard.cli_confirm.options]
+confirm = "Save configuration"
+network = "Back to network topology"
+exposure = "Back to exposure and protection"
+forwarding = "Back to forwarding settings"
+gateway = "Back to advanced gateway settings"
+cancel = "Cancel"
+
+[messages.wizard.summary.sections]
+network = "Network Topology"
+exposure = "Exposure and Protection"
+egress = "Default Egress NAT"
+advanced = "Advanced Settings"
+
+[messages.wizard.summary.fields]
+external_interface = "External interface"
+listen_ips = "External IPv4 addresses used for exposure"
+default_snat_ip = "Primary external IP"
+lan_ifs = "Internal interfaces"
+lan_nets = "Internal networks"
+external_runtime = "External interface binding"
+listen_runtime = "Exposure address binding"
+protected_nets = "Protected networks"
+hairpin = "Hairpin NAT"
+egress_nets = "Networks"
+egress_ip = "Default egress source IP"
+auth_mode = "Authorization mode"
+enable_wan_to_wan = "WAN-to-WAN forwarding"
+enable_tcpmss_clamp = "Automatic TCP MSS adjustment"
+counter_mode = "Rule counters"
+enable_strict_lan_validation = "Strict internal source validation"
+internal_ifs = "Interfaces to validate"
+trusted_internal_nets = "Trusted source networks"
+rp_filter_mode = "rp_filter handling"
+conntrack_mode = "Connection capacity tuning"
+conntrack_target_max = "Maximum concurrent connections"
+conntrack_peak = "Estimated peak concurrent connections"
+conntrack_memory_percent = "Memory share for connection tracking"
+
+[messages.wizard.summary.protection]
+backends = "Protection scope: exposed backends only"
+nets = "Protection scope: user-specified protected networks"
+both = "Protection scope: exposed backends and user-specified protected networks"
+
+[messages.wizard.summary.egress]
+disabled = "Managed by LOHA: disabled"
+enabled = "Managed by LOHA: enabled"
+
+[messages.wizard.summary.advanced]
+recommended = "Advanced settings: using recommended values"
+recommended_checked = "Advanced settings: checked, kept recommended values"
+
+[messages.config.show]
+title = "Current Core Configuration"
+
+[messages.config.command]
+invalid = "loha.conf is invalid for this command."
+detail = "Detail: {message}"
+
+[messages.config.get]
+invalid_current = "The current value of {key_name} in loha.conf is invalid."
+detail = "Detail: {message}"
+
+[messages.config.normalize]
+completed = "Canonical loha.conf has been rewritten."
+
+[messages.config.show.sections]
+values = "Canonical Values"
+runtime = "Runtime and Integration"
+
+[messages.config.show.runtime]
+external_status = "External interface binding status: {status}"
+external_note = "External interface binding note: {note}"
+listen_status = "Exposure address binding status: {status}"
+listen_note = "Exposure address binding note: {note}"
+rpfilter_source = "rp_filter source: {source}"
+rpfilter_status = "rp_filter runtime status: {status}"
+conntrack_status = "Conntrack runtime status: {status}"
+
+[messages.doctor.summary]
+fail_warn = "Doctor summary: {fail_count} fail, {warn_count} warn"
+warn_only = "Doctor summary: 0 fail, {warn_count} warn"
+all_pass = "Doctor summary: all checks passed"
+
+[messages.loader.apply]
+reload = "Mappings hot-swapped successfully."
+full = "Full ruleset initialized successfully."
+
+[messages.doctor.level]
+pass = "PASS"
+warn = "WARN"
+fail = "FAIL"
+
+[messages.doctor.detail]
+expected_token = "expected token={token}"
+current_value = "current={current}"
+current_mode = "current={mode}"
+detected_file_mode = "detected_file_mode={mode}"
+
+[messages.doctor.dependency]
+available = "Dependency check: {binary} is available"
+missing = "Dependency check: missing {binary}"
+
+[messages.doctor.config]
+valid = "Config check: loha.conf is valid"
+invalid = "Config check: loha.conf is invalid"
+
+[messages.doctor.rules]
+valid = "Rules check: rules.conf is valid"
+invalid = "Rules check: rules.conf is invalid"
+
+[messages.doctor.systemd]
+missing_systemctl = "Systemd check: missing systemctl"
+missing_unit_file = "Systemd check: missing unit file {unit}"
+unit_file_exists = "Systemd check: unit file {unit} exists"
+service_enabled = "Systemd check: loha service is enabled"
+service_not_enabled = "Systemd check: loha service is not enabled"
+service_active = "Systemd check: loha service is active"
+service_not_active = "Systemd check: loha service is not active"
+
+[messages.doctor.nft]
+missing_binary = "nft runtime check: missing nft"
+inspect_unavailable = "nft runtime check: unable to inspect live loha_port_forwarder table"
+inspect_permission_denied = "nft runtime check: unable to inspect live loha_port_forwarder table without elevated privileges"
+table_absent_service_missing = "nft runtime check: live loha_port_forwarder table is absent because loha.service is not installed"
+table_absent_service_inactive = "nft runtime check: live loha_port_forwarder table is absent because loha service is not active"
+table_missing_while_active = "nft runtime check: loha service is active but live loha_port_forwarder table is absent"
+table_absent_unknown = "nft runtime check: live loha_port_forwarder table is absent"
+table_present = "nft runtime check: live loha_port_forwarder table is present"
+dnat_map_present = "nft runtime check: dnat_rules map is present"
+dnat_map_missing = "nft runtime check: dnat_rules map is missing"
+auth_mode_match = "nft runtime check: the configured authorization mode ({auth_mode}) is reflected in the live table"
+auth_mode_mismatch = "nft runtime check: live table auth mode does not match loha.conf"
+
+[messages.doctor.listener]
+scan_unavailable = "Listener conflict check: listener scan unavailable"
+conflict = "Listener conflict check: local listeners overlap with exposed ports"
+conflict_detail = "{conflicts}"
+no_conflict = "Listener conflict check: no local listener conflicts detected"
+
+[messages.doctor.renderer]
+pass = "Renderer check: rules render successfully"
+fail = "Renderer check: rules render failed"
+
+[messages.doctor.runtime_binding]
+external_invalid = "Runtime binding check: external binding is invalid"
+external_auto = "Runtime binding check: EXTERNAL_IFS auto materialized successfully"
+external_explicit = "Runtime binding check: external binding uses configured values"
+external_auto_resolved = "Runtime binding check: EXTERNAL_IFS=auto resolves to primary external interface {interface}"
+external_auto_multi = "Runtime binding check: EXTERNAL_IFS=auto found multiple default IPv4 egress interfaces ({interfaces})"
+external_auto_missing = "Runtime binding check: EXTERNAL_IFS=auto could not resolve any default IPv4 egress interface"
+external_auto_detail = "materialized EXTERNAL_IFS={value}"
+external_explicit_detail = "EXTERNAL_IFS={external_ifs} PRIMARY_EXTERNAL_IF={primary_external_if}"
+external_auto_hint = "Set PRIMARY_EXTERNAL_IF or EXTERNAL_IFS manually."
+listener_invalid = "Runtime binding check: listener binding is invalid"
+listener_auto = "Runtime binding check: LISTEN_IPS auto materialized successfully"
+listener_explicit = "Runtime binding check: listener binding uses configured values"
+listener_auto_resolved = "Runtime binding check: LISTEN_IPS=auto resolves on primary external interface {interface} ({listen_ips})"
+listener_auto_missing = "Runtime binding check: LISTEN_IPS=auto could not resolve any global IPv4 on primary external interface {interface}"
+listener_auto_detail = "DEFAULT_SNAT_IP={default_snat_ip}"
+listener_auto_hint = "Assign a global IPv4 to the primary WAN interface, or set LISTEN_IPS manually."
+listener_auto_blocked_by_external_auto = "Runtime binding check: LISTEN_IPS=auto cannot resolve safely because EXTERNAL_IFS=auto sees multiple default egress interfaces ({interfaces})"
+listener_auto_blocked_hint = "Set PRIMARY_EXTERNAL_IF / EXTERNAL_IFS and LISTEN_IPS manually."
+listener_outside_primary = "Runtime binding check: LISTEN_IPS ({ips}) contains addresses outside the primary external interface ({interface})"
+listener_outside_primary_hint = "Keep LISTEN_IPS on PRIMARY_EXTERNAL_IF, or revisit the external binding selection."
+listener_explicit_detail = "LISTEN_IPS={listen_ips} DEFAULT_SNAT_IP={default_snat_ip}"
+
+[messages.doctor.hint]
+run_as_root = "Re-run `loha doctor` as root to inspect live nft runtime state."
+nft_inspect_unavailable = "Ensure the nft command can inspect the live ruleset in this environment."
+nft_table_absent = "Inspect loha.service state and run `loha reload` if the service should be active."
+nft_table_restore = "Run `loha reload` or inspect `systemctl status loha` to restore the live table."
+listener_scan_unavailable = "Install `ss` and run with enough privileges to inspect local listeners."
+
+[messages.doctor.runtime_sysctl]
+ip_forward_ok = "Runtime sysctl check: net.ipv4.ip_forward=1"
+ip_forward_not_one = "Runtime sysctl check: net.ipv4.ip_forward is not 1"
+ip_forward_unavailable = "Runtime sysctl check: unable to read net.ipv4.ip_forward"
+rp_all_ok = "Runtime sysctl check: net.ipv4.conf.all.rp_filter={current}"
+rp_all_unavailable = "Runtime sysctl check: net.ipv4.conf.all.rp_filter is unavailable or unexpected"
+rp_default_ok = "Runtime sysctl check: net.ipv4.conf.default.rp_filter={current}"
+rp_default_unavailable = "Runtime sysctl check: net.ipv4.conf.default.rp_filter is unavailable or unexpected"
+
+[messages.doctor.rpfilter.config]
+system_still_managed = "rp_filter config check: RP_FILTER_MODE=system but LOHA-managed rp_filter lines are still present"
+system_coherent = "rp_filter config check: system mode is coherent"
+file_missing = "rp_filter config check: expected LOHA-managed sysctl file is missing"
+file_mismatch = "rp_filter config check: current sysctl file does not match RP_FILTER_MODE"
+file_match = "rp_filter config check: current sysctl file matches RP_FILTER_MODE"
+
+[messages.doctor.rpfilter.runtime]
+coherent = "rp_filter runtime check: effective runtime state is coherent"
+system_managed = "rp_filter runtime check: system mode is configured but rp_filter is still LOHA-managed"
+no_file = "rp_filter runtime check: configured mode cannot be enforced because the sysctl file is missing"
+mismatch = "rp_filter runtime check: effective runtime state does not match RP_FILTER_MODE"
+mismatch_detail = "configured={configured} current={current}"
+
+[messages.doctor.conntrack.config]
+system_still_managed = "Conntrack config check: CONNTRACK_MODE=system but LOHA-managed conntrack files are still present"
+system_coherent = "Conntrack config check: system mode is coherent"
+files_missing = "Conntrack config check: LOHA-managed conntrack tuning files are missing"
+files_missing_detail = "sysctl={sysctl} modprobe={modprobe}"
+files_mismatch = "Conntrack config check: LOHA-managed conntrack tuning files do not match the configured target"
+files_present = "Conntrack config check: {mode} mode files are present"
+
+[messages.doctor.conntrack.runtime]
+unavailable = "Conntrack runtime check: unable to read nf_conntrack_max"
+non_numeric = "Conntrack runtime check: nf_conntrack_max is not numeric"
+max_mismatch = "Conntrack runtime check: nf_conntrack_max differs from the configured target"
+max_mismatch_detail = "runtime={runtime} expected={expected}"
+buckets_mismatch = "Conntrack runtime check: nf_conntrack_buckets differs from the configured target"
+buckets_mismatch_detail = "runtime={runtime} expected={expected}"
+match = "Conntrack runtime check: runtime values match the configured target"
+
+[messages.system_feature.rpfilter.status]
+mode_line = "rp_filter mode: {mode}"
+current_scope = "Current scope: {scope}"
+effective_hint = "Effective hint: effective rp_filter is max(all, iface) per interface."
+source = "Source: {source}"
+runtime = "Runtime: {runtime}"
+
+[messages.system_feature.rpfilter.source]
+system_still_managed = "Existing LOHA-managed sysctl content still drives rp_filter even though system mode is configured."
+system_clean = "No LOHA-managed rp_filter values are required in system mode; LOHA only ensures ip_forward=1."
+missing_file = "Expected LOHA-managed rp_filter sysctl file is missing."
+file_match = "LOHA-managed rp_filter sysctl file matches configured mode {mode}."
+file_mismatch = "LOHA-managed rp_filter sysctl file is present but currently resolves to {mode}."
+
+[messages.system_feature.rpfilter.runtime]
+system = "system mode is configured and runtime rp_filter is not LOHA-managed (current={current}; {scope})"
+system_managed = "configured as system, but runtime rp_filter is still LOHA-managed (current={current}; {scope})"
+match = "matches the configured rp_filter mode (current={current}; {scope})"
+no_file = "configured mode cannot be enforced because the LOHA-managed sysctl file is missing (current={current}; {scope})"
+mismatch = "does not match the configured rp_filter mode (current={current}; {scope})"
+
+[messages.system_feature.conntrack.status]
+mode_line = "Conntrack mode: {mode}"
+configured_target = "Configured target: nf_conntrack_max={target_max}, nf_conntrack_buckets={buckets}"
+source = "Source: {source}"
+source_sysctl = "sysctl file present"
+source_modprobe = "modprobe file present"
+source_none = "no LOHA-managed tuning files present"
+current_runtime = "Current runtime: {runtime}"
+runtime = "Runtime: {runtime}"
+
+[messages.system_feature.conntrack.runtime]
+system = "system mode; LOHA does not manage conntrack"
+system_managed = "configured as system, but LOHA-managed conntrack config files are still present"
+component_missing = "configured as {mode}, but conntrack tuning components are unavailable"
+expected_unavailable = "configured as {mode}, but the expected runtime target could not be derived"
+match = "matches runtime nf_conntrack_max={runtime_max} for mode {mode}"
+bucket_mismatch = "runtime nf_conntrack_max matches mode {mode}, but nf_conntrack_buckets={runtime_buckets} (expected {expected_buckets})"
+mismatch = "configured as {mode}, but runtime nf_conntrack_max={runtime_max} (expected {expected_max})"
+
+[messages.auth]
+intro = "Choose how LOHA marks authorized connections. `ct mark` is the best default for most deployments."
+invalid_selection = "Invalid option. Please enter 1 or 2."
+reload_prompt = "Apply rules now (reload --full)? [Y/n]"
+label_prompt = "Enter ct label value"
+label_range_error = "The ct label value must be an integer in [1, 127]."
+label_conflict = "Label value {value} conflicts with existing nft rules. Choose another value."
+mark_runtime_unavailable = "Unable to read conntrack marks in current environment. Dynamic detection unavailable."
+mark_detection_running = "Dynamic ct mark conflict detection is running. Press Enter to stop detection and review the current result."
+mark_detection_current = "Current suggested ct mark value: {mark}"
+mark_detection_stopped = "Dynamic ct mark conflict detection stopped."
+mark_no_conflict_detected = "No conflicting ct mark bits are currently detected."
+mark_conflict_bits = "Detected conflict bits: {bits}"
+mark_conflict_bits_static = "Detected candidate bits already referenced by non-LOHA nft/config state: {bits}"
+mark_conflict_bits_runtime = "Detected candidate bits currently present in live conntrack marks: {bits}"
+mark_conflict_samples_static = "Observed non-LOHA static mark values: {values}"
+mark_conflict_samples_runtime = "Observed live conntrack mark values: {values}"
+mark_conflict_detected = "LOHA detected a ct mark conflict when using {mark}. Choose another candidate to continue."
+mark_watch_hint = "Dynamic detection stopped. Current suggested ct mark value is {mark}. Press Enter to apply it, or choose another action."
+mark_pick_title = "Choose another ct mark candidate:"
+mark_all_conflict = "All ct mark candidates are detected as conflicting."
+mark_action_continue = "Continue with the current suggested value anyway"
+mark_action_label = "Switch to ct label instead"
+mark_action_refresh = "Run dynamic detection again"
+mark_action_prompt = "Press Enter to apply current choice, or choose number / c / l / r"
+mark_ignore_continue = "ct mark conflict ignored as requested. Continue switching."
+mark_switch_label = "Switched to ct label mode."
+
+[messages.rules.error]
+line_detail = "line {lineno}: {detail}"
+alias_columns = "ALIAS requires exactly 2 columns"
+port_columns = "PORT requires exactly 4 columns"
+duplicate_alias = "duplicate alias {name}"
+alias_missing = "alias ({name}) does not exist"
+overlap_with_line = "original listening port/range ({listen}) overlaps with line {seen_lineno} ({proto} {seen_listen})"
+unknown_type = "unknown rule type ({kind})"
+alias_name_prefix = "alias names must start with HOST_ or VM_"
+invalid_ipv4 = "invalid IPv4 value: {value}"
+invalid_proto = "protocol must be tcp or udp"
+port_range = "port must be within 1..65535"
+invalid_port_range = "invalid port range: {text}"
+invalid_port_offset = "invalid +offset port syntax: {text}"
+destination_range_required = "original listening port is a range, so destination port must also be a range"
+destination_single_required = "original listening port is a single port, so destination port must also be a single port"
+destination_range_length = "destination port range length must match original range length"
+alias_not_found = "alias not found: {name}"
+alias_referenced = "alias {name} is still referenced by a PORT rule"
+port_rule_not_found = "port rule not found: {proto} {listen}"
+port_prune_filter = "port prune requires at least one filter"
+port_prune_none = "no rules matched the prune filters"
+
+[messages.auth.plan]
+already_mark = "Authorization mode is already ct mark (mark value {value})."
+switched_mark = "Authorization mode switched to ct mark (mark value {value})."
+already_label = "Authorization mode is already ct label (label value {value})."
+switched_label = "Authorization mode switched to ct label (label value {value})."
+check_already_mark = "Check mode: AUTH_MODE is already ct mark (mark value {value}); no changes would be needed."
+check_switch_mark = "Check mode: AUTH_MODE would switch to ct mark (mark value {value})."
+check_already_label = "Check mode: AUTH_MODE is already ct label (label value {value}); no changes would be needed."
+check_switch_label = "Check mode: AUTH_MODE would switch to ct label (label value {value})."
+reload_hint = "Run `loha reload --full` to apply the authorization mode change."
+
+[messages.auth.warning]
+label_probe_failed = "ct label capability probe failed in current environment; later reload may fail."
+
+[messages.auth.current]
+mark = "Current authorization mode: ct mark (mark value {value})"
+label = "Current authorization mode: ct label (label value {value})"
+
+[messages.auth.option]
+mark = "ct mark (recommended): performance-first, with static+dynamic conflict avoidance."
+label = "ct label: easier isolation from existing mark rules, currently static conflict check only."
+
+[messages.runtime_binding.status]
+unset = "not set"
+external_single = "compatible now via the configured single-interface binding"
+external_auto = "compatible now when exactly one default IPv4 egress interface can be resolved"
+external_multi_out_of_scope = "out of scope: only one external interface is supported"
+listen_single = "compatible now via the configured external IP list used for exposure"
+listen_auto = "compatible now via the current primary external interface addresses"
+listen_multiple = "compatible now via the configured external IP list used for exposure"
+invalid_external = "External interface binding is invalid"
+invalid_listen = "Exposure address binding is invalid"
+
+[messages.runtime_binding.note]
+external_auto = "If the main routing table has multiple default IPv4 routes, set the external interface binding manually instead of using auto."
+listen_auto = "Exposure address binding in auto mode resolves external IPv4 addresses from the primary external interface at runtime."
+
+[messages.runtime_binding.notice]
+external_auto_materialized = "EXTERNAL_IFS=auto was resolved to {value} before saving; loha.conf will store that resolved value."
+listen_auto_materialized = "LISTEN_IPS=auto was resolved to {value} before saving; loha.conf will store that resolved value."
+
+[messages.wizard.steps.external_ifs]
+title = "External Interface"
+description = "Choose the single external interface used as the entry surface."
+
+[messages.wizard.steps.listen_ips]
+title = "External IPv4 Addresses Used for Exposure"
+description = "Enter one or more external IPv4 addresses used for exposure, separated by commas."
+
+[messages.wizard.steps.default_snat_ip]
+title = "Primary External IP"
+description = "Choose the primary external IP used for default egress SNAT."
+
+[messages.wizard.steps.lan_ifs]
+title = "Internal Interfaces"
+description = "Choose the internal interfaces managed by LOHA."
+
+[messages.wizard.steps.lan_nets]
+title = "Internal Networks"
+description = "Enter one or more IPv4 CIDRs for the managed internal networks."
+
+[messages.wizard.steps.protection_mode]
+title = "Protection Scope"
+description = "Choose what LOHA should protect from direct WAN access."
+
+[messages.wizard.steps.protection_mode.options]
+backends = "Exposed backends only"
+nets = "User-specified protected networks"
+both = "Exposed backends and user-specified protected networks"
+
+[messages.wizard.steps.protected_nets]
+title = "Protected Networks"
+description = "Enter the IPv4 CIDRs that LOHA should treat as protected networks."
+
+[messages.wizard.steps.enable_hairpin]
+title = "Hairpin NAT"
+description = "Decide whether internal hosts may reach exposed services through external IPs."
+
+[messages.wizard.steps.enable_hairpin.options]
+on = "Enable"
+off = "Disable"
+
+[messages.wizard.steps.enable_egress_snat]
+title = "Default Egress NAT"
+description = "Decide whether LOHA manages default egress SNAT for internal networks."
+
+[messages.wizard.steps.enable_egress_snat.options]
+on = "Enable"
+off = "Disable"
+
+[messages.wizard.steps.egress_nets]
+title = "Egress NAT Networks"
+description = "Enter the IPv4 CIDRs that should use LOHA-managed default egress SNAT."
+
+[messages.wizard.steps.auth_mode]
+title = "Authorization Marking"
+description = "Choose how LOHA marks authorized connections. `ct mark` is the best default for most deployments."
+
+[messages.wizard.steps.auth_mode.options]
+mark = "[ct mark] Performance-first"
+label = "[ct label] Easier isolation from existing mark rules"
+
+[messages.wizard.steps.enable_wan_to_wan]
+title = "Allow WAN-to-WAN Forwarding"
+description = "Enable this only when external clients must use port forwarding on this gateway's exposure address to reach services on other external hosts. Most deployments can leave this disabled."
+
+[messages.wizard.steps.enable_wan_to_wan.options]
+on = "Enable"
+off = "Disable"
+
+[messages.wizard.steps.enable_tcpmss_clamp]
+title = "Automatic TCP MSS Adjustment"
+description = "Enable this when PMTU black holes are a risk; LOHA will adjust WAN egress TCP MSS to avoid stalled connections."
+
+[messages.wizard.steps.enable_tcpmss_clamp.options]
+on = "Enable"
+off = "Disable"
+
+[messages.wizard.steps.counter_mode]
+title = "Rule Counters"
+description = "Choose how many nft rule counters to keep for troubleshooting and traffic observation."
+
+[messages.wizard.steps.counter_mode.options]
+off = "Off"
+minimal = "Minimal (important rules only)"
+all = "All rules"
+
+[messages.wizard.steps.enable_strict_validation]
+title = "Strict Internal Source Validation"
+description = "Drop internal traffic early when its source address does not match the expected trusted networks. Enable this only when you know which interfaces and IPv4 CIDRs should be trusted."
+
+[messages.wizard.steps.enable_strict_validation.options]
+on = "Enable"
+off = "Disable"
+
+[messages.wizard.steps.internal_ifs]
+title = "Interfaces to Validate"
+description = "Choose the internal interfaces that should use strict source validation."
+
+[messages.wizard.steps.trusted_internal_nets]
+title = "Trusted Source Networks"
+description = "Enter the trusted IPv4 CIDRs allowed on those interfaces. Sources outside these ranges will be dropped early."
+
+[messages.wizard.steps.rp_filter_mode]
+title = "Advanced NAT Support (rp_filter)"
+description = "Hairpin NAT and WAN-to-WAN forwarding may require a different rp_filter handling mode. Choose how LOHA should manage rp_filter."
+
+[messages.wizard.steps.rp_filter_mode.options]
+system = "Keep system defaults"
+strict = "Strict (managed interfaces only)"
+loose_scoped = "Loose (managed interfaces only)"
+loose_global = "Loose (all interfaces)"
+
+[messages.wizard.steps.conntrack_mode]
+title = "Connection Capacity Tuning (conntrack)"
+description = "Choose how LOHA manages concurrent connection capacity and conntrack tuning."
+
+[messages.wizard.steps.conntrack_mode.options]
+system = "Keep system defaults"
+conservative = "[Conservative] 65k concurrent connections (better for low-memory systems)"
+standard = "[Standard] 262k concurrent connections (fits most deployments)"
+high = "[High] 1,048k concurrent connections (better for high-memory gateways)"
+auto = "[Auto] Calculate from estimated peak concurrency and memory percentage"
+custom = "[Custom] Enter the maximum concurrent connections manually"
+
+[messages.wizard.steps.conntrack_peak]
+title = "Estimated Peak Concurrent Connections"
+description = "Enter the expected peak number of concurrent connections. LOHA will use this to calculate nf_conntrack_max automatically."
+
+[messages.wizard.steps.conntrack_target_max]
+title = "Maximum Concurrent Connections"
+description = "Enter the maximum concurrent connections to set manually. This writes nf_conntrack_max."
+
+[messages.wizard.steps.conntrack_memory_percent]
+title = "Memory Share for Connection Tracking"
+description = "Enter the percentage of system memory LOHA may use when planning conntrack capacity."
+
+[glossary]
+"external interface" = "External interface"
+"exposure" = "Exposure"
+"default egress NAT" = "Default Egress NAT"
+"auth mode" = "Authorization mode"
+
+[lint]
+literal_tokens = ["EXTERNAL_IFS", "LISTEN_IPS", "AUTH_MODE", "CONNTRACK_MODE", "ct mark", "ct label", "rp_filter", "conntrack", "nftables", "systemd", "reload --full"]

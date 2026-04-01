@@ -1,0 +1,66 @@
+#!/bin/sh
+set -eu
+
+REPO="__GITHUB_REPOSITORY__"
+ARCHIVE_NAME="loha-port-forwarder.tar.gz"
+CHECKSUM_NAME="${ARCHIVE_NAME}.sha256"
+RELEASE_TAG="${LOHA_RELEASE_TAG:-__RELEASE_TAG__}"
+
+need_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "ERROR: required command not found: $1" >&2
+    exit 1
+  fi
+}
+
+checksum_verify() {
+  checksum_path=$1
+  archive_path=$2
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    (
+      cd "$(dirname "$archive_path")"
+      sha256sum -c "$(basename "$checksum_path")"
+    )
+    return
+  fi
+
+  if command -v shasum >/dev/null 2>&1; then
+    expected=$(awk '{print $1}' "$checksum_path")
+    actual=$(shasum -a 256 "$archive_path" | awk '{print $1}')
+    if [ "$expected" = "$actual" ]; then
+      return
+    fi
+    echo "ERROR: SHA-256 verification failed for ${ARCHIVE_NAME}" >&2
+    exit 1
+  fi
+
+  echo "ERROR: need sha256sum or shasum to verify ${ARCHIVE_NAME}" >&2
+  exit 1
+}
+
+need_cmd curl
+need_cmd tar
+
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/loha-install.XXXXXX")
+cleanup() {
+  rm -rf "$tmp_dir"
+}
+trap cleanup EXIT INT TERM
+
+if [ "$RELEASE_TAG" = "latest" ]; then
+  download_base="https://github.com/${REPO}/releases/latest/download"
+else
+  download_base="https://github.com/${REPO}/releases/download/${RELEASE_TAG}"
+fi
+
+archive_path="${tmp_dir}/${ARCHIVE_NAME}"
+checksum_path="${tmp_dir}/${CHECKSUM_NAME}"
+
+curl -fsSL "${download_base}/${ARCHIVE_NAME}" -o "$archive_path"
+curl -fsSL "${download_base}/${CHECKSUM_NAME}" -o "$checksum_path"
+checksum_verify "$checksum_path" "$archive_path"
+
+tar -xzf "$archive_path" -C "$tmp_dir"
+cd "${tmp_dir}/loha-port-forwarder"
+exec sh ./install.sh "$@"

@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  attestations: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      ARCHIVE_NAME: loha-port-forwarder.tar.gz
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run release gate tests
+        run: ./scripts/run_tests.sh
+
+      - name: Build release assets
+        run: |
+          mkdir -p dist
+          git archive \
+            --format=tar.gz \
+            --prefix=loha-port-forwarder/ \
+            -o "dist/${ARCHIVE_NAME}" \
+            "${GITHUB_REF_NAME}"
+          (
+            cd dist
+            sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+          )
+          sed \
+            -e "s|__GITHUB_REPOSITORY__|${GITHUB_REPOSITORY}|g" \
+            -e "s|__RELEASE_TAG__|${GITHUB_REF_NAME}|g" \
+            scripts/release_install.sh.in > dist/install.sh
+          chmod 0755 dist/install.sh
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists; skipping release creation."
+            exit 0
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/${ARCHIVE_NAME}" \
+            "dist/${ARCHIVE_NAME}.sha256" \
+            "dist/install.sh#install.sh" \
+            --verify-tag \
+            --generate-notes
+
+      - name: Attest release archive provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/loha-port-forwarder.tar.gz
+
+      - name: Attest installer provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/install.sh

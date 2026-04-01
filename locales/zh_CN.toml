@@ -1,0 +1,826 @@
+[meta]
+locale = "zh_CN"
+fallback = "en_US"
+name = "简体中文"
+
+[messages.common]
+invalid_choice = "无效选项。"
+cancelled = "已取消。"
+error = "错误：{message}"
+back = "返回"
+exit = "退出"
+already_applied = "当前已生效。"
+
+[messages.common.state]
+on = "启用"
+off = "关闭"
+
+[messages.common.check]
+would_change = "Check 模式：这些变更会被应用，但当前不会实际写入。"
+no_change = "Check 模式：当前不需要应用任何变更。"
+
+[messages.install.language]
+title = "LOHA Port Forwarder 语言选择"
+description = "请选择安装程序语言。"
+prompt = "输入编号或 locale 代码（直接回车使用 {recommended}）"
+recommended_suffix = "（推荐）"
+
+[messages.install.import]
+title = "导入现有配置"
+description = "请选择本次安装要基于哪份现有配置开始。"
+prompt_default = "选择（直接回车使用 {default_token}）"
+fresh = "从推荐默认值开始"
+
+[messages.install.import.option]
+repo = "仓库中的 loha.conf：{path}"
+system = "已安装的 loha.conf：{path}"
+
+[messages.install.precheck]
+title = "安装前检查"
+root_ok = "当前以 root 身份运行"
+root_fail = "安装程序必须以 root 身份运行"
+dep_ok = "依赖：已找到 {name}"
+dep_missing = "依赖：缺少 {name}"
+asset_ok = "资源：已找到 {path}"
+asset_missing = "资源：缺少 {path}"
+kernel_ok = "内核：{version} 满足 >= 5.6"
+kernel_low = "内核：{version} 低于 5.6"
+nft_ok = "nftables：{version} 满足 >= 0.9.4"
+nft_low = "nftables：{version} 低于 0.9.4"
+nft_unknown = "nftables：无法确定版本"
+systemd_ok = "systemd：查询 unit files 成功"
+systemd_fail = "systemd：无法查询 unit files"
+ct_label_ok = "nftables 支持 ct label"
+ct_label_warn = "nftables 的 ct label 检查失败；label 模式可能不可用"
+dry_run = "Dry-run 模式：不会实际应用安装变更"
+fail_summary = "安装前检查失败：{count} 项"
+warn_summary = "安装前检查完成，但有 {count} 项警告"
+all_pass = "所有安装前检查均已通过。"
+exit_prompt = "回车退出"
+
+[messages.install.summary]
+title = "安装总览"
+description = "查看计划安装内容，并选择下一步。"
+
+[messages.install.summary.fields]
+locale = "语言"
+
+[messages.install.summary.options]
+confirm = "确认并安装"
+network = "返回网络拓扑"
+exposure = "返回对外暴露与保护"
+egress = "返回默认出口 NAT"
+advanced = "返回高级设置"
+cancel = "取消安装"
+
+[messages.install.dry_run]
+notice = "[dry-run] 未实际写入文件系统"
+mkdir = "[dry-run] 执行 mkdir -p {path}"
+copy = "[dry-run] 复制 {src} -> {dst}"
+touch = "[dry-run] 执行 touch {path}"
+write = "[dry-run] 写入 {path}"
+remove = "[dry-run] 删除 {path}"
+sysctl = "[dry-run] 执行 sysctl --system"
+daemon_reload = "[dry-run] 执行 systemctl daemon-reload"
+stop = "[dry-run] 执行 systemctl stop {unit}"
+disable = "[dry-run] 执行 systemctl disable {unit}"
+enable = "[dry-run] 执行 systemctl enable {unit}"
+restart = "[dry-run] 执行 systemctl restart {unit}"
+nft_destroy = "[dry-run] 执行 nft destroy table ip loha_port_forwarder"
+
+[messages.install]
+completed = "安装文件已就位。"
+upstream_fw = "检测到的上游防火墙目标：{target}"
+cancelled = "安装已在应用任何变更前取消。"
+recovery_completed = "安装恢复已完成；本次失败产生的部分变更已回滚。"
+recovery_prepare_failed = "安装恢复准备失败：{error}"
+recovery_failed = "安装恢复失败：{error}"
+
+[messages.install.deploy]
+failed = "安装文件系统部署失败：{error}"
+
+[messages.install.system_features]
+file_apply_failed = "写入安装阶段的 system-feature 文件失败：{error}"
+sysctl_missing = "安装阶段无法应用 system-feature 运行时状态，因为缺少 `sysctl`。"
+sysctl_failed = "安装阶段执行 `sysctl --system` 失败：{error}"
+
+[messages.install.service]
+systemctl_missing = "安装阶段无法激活 loha.service，因为缺少 `systemctl`。"
+action_failed = "安装阶段执行 `{command}` 失败：{error}"
+
+[messages.install.history]
+write_failed = "写入安装快照失败：{error}"
+
+[messages.install.uninstall]
+prompt = "是否删除已安装的 LOHA 文件？[y/N]: "
+data_prompt = "是否删除所有用户配置数据（{path}）？[y/N]: "
+system_tuning_prompt = "是否删除内核网络调优参数（{nat}、{conntrack}、{modprobe}）？[y/N]: "
+completed = "LOHA 已从系统中移除。"
+remove_failed = "删除已安装的 LOHA 文件失败：{error}"
+
+[messages.menu]
+choice = "选择"
+
+[messages.menu.main]
+status = "查看当前状态和规则"
+alias = "管理别名"
+add_port = "添加端口转发规则"
+del_port = "删除端口转发规则"
+edit = "编辑 rules.conf"
+reload = "应用规则（reload）"
+rendered_rules = "预览当前配置渲染的 nft 规则"
+advanced = "高级设置"
+change_language = "切换语言"
+
+[messages.menu.prompt]
+enter_back = "输入数字进行选择，直接回车返回上级菜单"
+
+[messages.menu.setting]
+current_status = "当前状态：{status}"
+current_value = "当前设置：{value}"
+
+[messages.menu.alias]
+title = "管理别名"
+add = "添加别名"
+remove = "删除别名"
+name_prompt = "别名名称"
+ip_prompt = "IPv4 地址"
+
+[messages.menu.port_add]
+title = "添加端口转发规则"
+orig_prompt = "原始监听端口"
+dest_prompt = "目标别名或 IPv4"
+dest_port_prompt = "目标端口 [默认=原始端口]"
+listener_scan_unavailable = "当前无法扫描本地监听端口，是否仍继续？[y/N]"
+listener_conflict_confirm = "检测到本地监听冲突：{proto} {ports}，是否仍继续？[y/N]"
+
+[messages.menu.port_add.protocol]
+tcp = "TCP"
+udp = "UDP"
+
+[messages.menu.port_del]
+title = "删除端口转发规则"
+orig_prompt = "原始监听端口"
+
+[messages.menu.edit]
+editor_invalid = "EDITOR 必须解析为单个可执行文件名或路径。"
+editor_missing = "未找到编辑器：{editor}"
+launch_fail = "编辑器退出状态非 0：{code}（{editor}）"
+warning_intro = "这会直接打开原始 rules.conf 编辑器，适合高级用户。"
+warning_recommendation = "日常增删映射更建议使用别名和端口菜单。"
+warning_validation = "退出编辑器后，LOHA 会自动校验 rules.conf。"
+continue_prompt = "请确认是否继续（y/N）"
+validating = "正在校验编辑后的 rules.conf..."
+pass = "rules.conf 校验通过。"
+fail = "rules.conf 校验失败。"
+
+[messages.menu.advanced]
+title = "高级设置"
+current_status = "当前状态"
+config_wizard = "配置向导"
+config_history = "配置历史 / 回退"
+rpfilter = "高级 NAT 支持（rp_filter）"
+conntrack = "并发连接数调优（conntrack）"
+auth_mode = "切换授权模式（mark / label）"
+wan_to_wan = "WAN 到 WAN 转发"
+tcpmss_clamp = "自动修正 TCP MSS"
+counter_mode = "nftables 规则计数器"
+strict_validation = "严格内部源地址校验"
+
+[messages.menu.language]
+title = "LOHA 语言"
+description = "请选择 LOHA 界面语言。"
+prompt = "输入编号或 locale 代码（直接回车使用 {recommended}）"
+
+[messages.menu.rpfilter]
+title = "rp_filter"
+system = "系统"
+strict = "严格"
+loose_scoped = "按接口宽松"
+loose_global = "全局宽松"
+
+[messages.menu.conntrack]
+title = "Conntrack"
+status = "状态"
+profile = "预设"
+auto = "自动"
+custom = "自定义"
+system = "系统"
+profile_prompt = "conntrack 预设"
+peak_prompt = "预估并发连接峰值"
+memory_prompt = "用于连接跟踪的内存比例"
+max_prompt = "最大并发连接数"
+
+[messages.history.menu]
+title = "配置历史 / 回退"
+status = "自动快照：{status}"
+toggle_enable = "启用自动配置快照"
+toggle_disable = "关闭自动配置快照"
+show = "查看配置历史"
+rollback_latest = "回退到最新快照"
+rollback_index = "按历史编号回退"
+index_prompt = "输入要恢复的历史编号"
+index_invalid = "历史编号必须是正整数。"
+
+[messages.history.rollback]
+apply_prompt = "是否立即用 `loha reload` 应用恢复后的配置？[y/N]"
+rescue_files = "回退救援文件已保留在：{path}"
+rescue_hint = "如果需要手工恢复，请查看或复制上方终端输出中的完整救援路径。"
+latest_restored = "最新配置快照已恢复。"
+checkpoint_restored = "回退检查点已恢复。"
+index_restored = "配置历史条目 {selector} 已恢复。"
+reload_hint = "运行 `loha reload` 以应用恢复后的配置。"
+
+[messages.wizard.command]
+saved = "核心配置已写入。"
+reload_hint = "运行 `loha reload` 以应用更新后的配置。"
+cancelled = "配置向导已取消。"
+
+[messages.history.status]
+enabled = "已启用"
+disabled = "已关闭"
+
+[messages.history.command]
+status = "自动快照：{status}"
+enabled = "自动配置快照已启用。"
+disabled = "自动配置快照已关闭。"
+
+[messages.history.list]
+title = "配置历史"
+empty = "暂无快照。"
+checkpoint_title = "回退检查点"
+checkpoint_note = "此检查点不计入常规历史上限。"
+source = "来源"
+reason = "原因"
+config_hash = "配置哈希"
+rules_hash = "规则哈希"
+
+[messages.list]
+title = "LOHA 摘要"
+external_interface = "外部接口"
+listen_ips = "对外暴露用外部 IPv4 地址"
+lan_nets = "内部网段"
+aliases = "别名"
+ports = "端口"
+none = "（无）"
+
+[messages.wizard.option]
+recommended = "（推荐）"
+current = "（当前）"
+manual = "手动输入"
+
+[messages.wizard.prompt]
+menu_default = "输入数字进行选择，直接回车使用 {default_token}"
+multi_default = "输入逗号分隔的编号（{default_display}）"
+multi = "输入逗号分隔的编号"
+multi_or_manual_default = "输入逗号分隔的菜单编号，或直接输入值（{default_display}）"
+multi_or_manual = "输入逗号分隔的菜单编号，或直接输入值"
+text_default = "{placeholder}（默认：{default_value}）"
+
+[messages.wizard.error]
+invalid_multi_selection = "选择无效。"
+required_selection = "至少需要一个值。"
+required_value = "该项不能为空。"
+
+[messages.wizard.placeholder]
+interface = "接口名"
+ipv4_csv = "IPv4,IPv4"
+iface_csv = "接口,接口"
+cidr_csv = "CIDR,CIDR"
+integer = "整数"
+
+[messages.wizard.external_interface]
+manual = "请输入外部接口名称。"
+
+[messages.wizard.internal_interfaces]
+manual = "请输入一个或多个内部接口，使用逗号分隔。"
+
+[messages.wizard.advanced]
+title = "高级设置"
+description = "使用推荐的高级设置，或手动调整。"
+
+[messages.wizard.advanced.options]
+recommended = "使用推荐设置"
+manual = "手动调整"
+
+[messages.wizard.gateway]
+title = "高级网关设置"
+description = "检查面向网关的 NAT 与系统集成设置。"
+
+[messages.wizard.gateway.options]
+configure = "现在配置"
+skip = "暂时跳过"
+
+[messages.wizard.confirm]
+title = "确认配置"
+description = "请选择下一步。"
+
+[messages.wizard.confirm.options]
+confirm = "确认"
+network = "返回网络拓扑"
+exposure = "返回对外暴露与保护"
+egress = "返回默认出口 NAT"
+advanced = "返回高级设置"
+cancel = "取消"
+
+[messages.wizard.cli_confirm]
+title = "保存配置"
+description = "请检查配置，并选择下一步。"
+
+[messages.wizard.cli_confirm.options]
+confirm = "保存配置"
+network = "返回网络拓扑"
+exposure = "返回对外暴露与保护"
+forwarding = "返回转发基础设置"
+gateway = "返回高级网关设置"
+cancel = "取消"
+
+[messages.wizard.summary.sections]
+network = "网络拓扑"
+exposure = "对外暴露与保护"
+egress = "默认出口 NAT"
+advanced = "高级设置"
+
+[messages.wizard.summary.fields]
+external_interface = "外部接口"
+listen_ips = "对外暴露用外部 IPv4 地址"
+default_snat_ip = "主外部 IP"
+lan_ifs = "内部接口"
+lan_nets = "内部网络"
+external_runtime = "外部接口绑定"
+listen_runtime = "对外暴露地址绑定"
+protected_nets = "受保护网络"
+hairpin = "回流 NAT"
+egress_nets = "网络"
+egress_ip = "默认出口源 IP"
+auth_mode = "授权模式"
+enable_wan_to_wan = "WAN 到 WAN 转发"
+enable_tcpmss_clamp = "自动修正 TCP MSS"
+counter_mode = "规则计数器"
+enable_strict_lan_validation = "严格内部源地址校验"
+internal_ifs = "执行校验的接口"
+trusted_internal_nets = "可信来源网络"
+rp_filter_mode = "rp_filter 处理方式"
+conntrack_mode = "并发连接数调优"
+conntrack_target_max = "最大并发连接数"
+conntrack_peak = "预估并发连接峰值"
+conntrack_memory_percent = "用于连接跟踪的内存比例"
+
+[messages.wizard.summary.protection]
+backends = "保护范围：仅对外暴露的后端"
+nets = "保护范围：指定的受保护网络"
+both = "保护范围：对外暴露的后端和指定的受保护网络"
+
+[messages.wizard.summary.egress]
+disabled = "由 LOHA 管理：关闭"
+enabled = "由 LOHA 管理：启用"
+
+[messages.wizard.summary.advanced]
+recommended = "高级设置：使用推荐值"
+recommended_checked = "高级设置：已检查，保留推荐值"
+
+[messages.config.show]
+title = "当前核心配置"
+
+[messages.config.command]
+invalid = "当前命令无法处理无效的 loha.conf。"
+detail = "详情：{message}"
+
+[messages.config.get]
+invalid_current = "loha.conf 中 {key_name} 的当前值无效。"
+detail = "详情：{message}"
+
+[messages.config.normalize]
+completed = "已重写为 canonical loha.conf。"
+
+[messages.config.show.sections]
+values = "canonical 配置值"
+runtime = "运行时与系统集成"
+
+[messages.config.show.runtime]
+external_status = "外部接口绑定状态：{status}"
+external_note = "外部接口绑定说明：{note}"
+listen_status = "对外暴露地址绑定状态：{status}"
+listen_note = "对外暴露地址绑定说明：{note}"
+rpfilter_source = "rp_filter 来源：{source}"
+rpfilter_status = "rp_filter 运行时状态：{status}"
+conntrack_status = "conntrack 运行时状态：{status}"
+
+[messages.doctor.summary]
+fail_warn = "诊断总结：{fail_count} 项失败，{warn_count} 项警告"
+warn_only = "诊断总结：0 项失败，{warn_count} 项警告"
+all_pass = "诊断总结：所有检查均已通过"
+
+[messages.loader.apply]
+reload = "映射已成功热更新。"
+full = "完整规则集已成功初始化。"
+
+[messages.doctor.level]
+pass = "通过"
+warn = "警告"
+fail = "失败"
+
+[messages.doctor.detail]
+expected_token = "期望 token={token}"
+current_value = "当前值={current}"
+current_mode = "当前模式={mode}"
+detected_file_mode = "检测到的文件模式={mode}"
+
+[messages.doctor.dependency]
+available = "依赖检查：{binary} 可用"
+missing = "依赖检查：缺少 {binary}"
+
+[messages.doctor.config]
+valid = "配置检查：loha.conf 有效"
+invalid = "配置检查：loha.conf 无效"
+
+[messages.doctor.rules]
+valid = "规则检查：rules.conf 有效"
+invalid = "规则检查：rules.conf 无效"
+
+[messages.doctor.systemd]
+missing_systemctl = "systemd 检查：缺少 systemctl"
+missing_unit_file = "systemd 检查：缺少 unit 文件 {unit}"
+unit_file_exists = "systemd 检查：unit 文件 {unit} 已存在"
+service_enabled = "systemd 检查：loha 服务已启用"
+service_not_enabled = "systemd 检查：loha 服务未启用"
+service_active = "systemd 检查：loha 服务正在运行"
+service_not_active = "systemd 检查：loha 服务未运行"
+
+[messages.doctor.nft]
+missing_binary = "nft 运行检查：缺少 nft"
+inspect_unavailable = "nft 运行检查：无法查看 live loha_port_forwarder table"
+inspect_permission_denied = "nft 运行检查：当前权限不足，无法查看 live loha_port_forwarder table"
+table_absent_service_missing = "nft 运行检查：由于 loha.service 未安装，当前不存在 live loha_port_forwarder table"
+table_absent_service_inactive = "nft 运行检查：由于 loha 服务未运行，当前不存在 live loha_port_forwarder table"
+table_missing_while_active = "nft 运行检查：loha 服务正在运行，但 live loha_port_forwarder table 不存在"
+table_absent_unknown = "nft 运行检查：当前不存在 live loha_port_forwarder table"
+table_present = "nft 运行检查：live loha_port_forwarder table 已存在"
+dnat_map_present = "nft 运行检查：dnat_rules map 已存在"
+dnat_map_missing = "nft 运行检查：缺少 dnat_rules map"
+auth_mode_match = "nft 运行检查：live table 已反映当前配置的授权模式（{auth_mode}）"
+auth_mode_mismatch = "nft 运行检查：live table 的授权模式与 loha.conf 不一致"
+
+[messages.doctor.listener]
+scan_unavailable = "监听冲突检查：当前无法扫描本地监听端口"
+conflict = "监听冲突检查：本地监听与对外暴露端口存在重叠"
+conflict_detail = "{conflicts}"
+no_conflict = "监听冲突检查：未发现本地监听冲突"
+
+[messages.doctor.renderer]
+pass = "渲染检查：规则渲染成功"
+fail = "渲染检查：规则渲染失败"
+
+[messages.doctor.runtime_binding]
+external_invalid = "运行时绑定检查：外部接口绑定无效"
+external_auto = "运行时绑定检查：EXTERNAL_IFS auto 已成功物化"
+external_explicit = "运行时绑定检查：外部接口绑定使用已配置值"
+external_auto_resolved = "运行时绑定检查：EXTERNAL_IFS=auto 已解析到主外部接口 {interface}"
+external_auto_multi = "运行时绑定检查：EXTERNAL_IFS=auto 检测到多个默认 IPv4 出口接口（{interfaces}）"
+external_auto_missing = "运行时绑定检查：EXTERNAL_IFS=auto 无法解析任何默认 IPv4 出口接口"
+external_auto_detail = "已物化 EXTERNAL_IFS={value}"
+external_explicit_detail = "EXTERNAL_IFS={external_ifs} PRIMARY_EXTERNAL_IF={primary_external_if}"
+external_auto_hint = "请手动设置 PRIMARY_EXTERNAL_IF 或 EXTERNAL_IFS。"
+listener_invalid = "运行时绑定检查：监听地址绑定无效"
+listener_auto = "运行时绑定检查：LISTEN_IPS auto 已成功物化"
+listener_explicit = "运行时绑定检查：监听地址绑定使用已配置值"
+listener_auto_resolved = "运行时绑定检查：LISTEN_IPS=auto 已在主外部接口 {interface} 上解析为 {listen_ips}"
+listener_auto_missing = "运行时绑定检查：LISTEN_IPS=auto 无法在主外部接口 {interface} 上解析到任何全局 IPv4"
+listener_auto_detail = "DEFAULT_SNAT_IP={default_snat_ip}"
+listener_auto_hint = "请为主 WAN 接口分配全局 IPv4，或手动设置 LISTEN_IPS。"
+listener_auto_blocked_by_external_auto = "运行时绑定检查：由于 EXTERNAL_IFS=auto 检测到多个默认出口接口（{interfaces}），LISTEN_IPS=auto 无法安全解析"
+listener_auto_blocked_hint = "请手动设置 PRIMARY_EXTERNAL_IF / EXTERNAL_IFS 和 LISTEN_IPS。"
+listener_outside_primary = "运行时绑定检查：LISTEN_IPS（{ips}）包含主外部接口（{interface}）之外的地址"
+listener_outside_primary_hint = "请将 LISTEN_IPS 保持在 PRIMARY_EXTERNAL_IF 上，或重新检查外部绑定选择。"
+listener_explicit_detail = "LISTEN_IPS={listen_ips} DEFAULT_SNAT_IP={default_snat_ip}"
+
+[messages.doctor.hint]
+run_as_root = "请以 root 重新运行 `loha doctor`，以检查 live nft 运行状态。"
+nft_inspect_unavailable = "请确认当前环境中的 nft 命令可以读取 live ruleset。"
+nft_table_absent = "请先检查 loha.service 当前状态；如果服务本应运行，请执行 `loha reload`。"
+nft_table_restore = "请执行 `loha reload`，或检查 `systemctl status loha` 以恢复 live table。"
+listener_scan_unavailable = "请安装 `ss` 并以足够权限运行，以检查本地监听端口。"
+
+[messages.doctor.runtime_sysctl]
+ip_forward_ok = "运行时 sysctl 检查：net.ipv4.ip_forward=1"
+ip_forward_not_one = "运行时 sysctl 检查：net.ipv4.ip_forward 不是 1"
+ip_forward_unavailable = "运行时 sysctl 检查：无法读取 net.ipv4.ip_forward"
+rp_all_ok = "运行时 sysctl 检查：net.ipv4.conf.all.rp_filter={current}"
+rp_all_unavailable = "运行时 sysctl 检查：net.ipv4.conf.all.rp_filter 不可用或值异常"
+rp_default_ok = "运行时 sysctl 检查：net.ipv4.conf.default.rp_filter={current}"
+rp_default_unavailable = "运行时 sysctl 检查：net.ipv4.conf.default.rp_filter 不可用或值异常"
+
+[messages.doctor.rpfilter.config]
+system_still_managed = "rp_filter 配置检查：已配置 RP_FILTER_MODE=system，但仍存在 LOHA 管理的 rp_filter 行"
+system_coherent = "rp_filter 配置检查：system 模式一致"
+file_missing = "rp_filter 配置检查：缺少预期的 LOHA 管理 sysctl 文件"
+file_mismatch = "rp_filter 配置检查：当前 sysctl 文件与 RP_FILTER_MODE 不一致"
+file_match = "rp_filter 配置检查：当前 sysctl 文件与 RP_FILTER_MODE 一致"
+
+[messages.doctor.rpfilter.runtime]
+coherent = "rp_filter 运行检查：当前运行状态一致"
+system_managed = "rp_filter 运行检查：已配置 system 模式，但 rp_filter 仍由 LOHA 管理"
+no_file = "rp_filter 运行检查：由于 sysctl 文件缺失，无法强制应用当前配置模式"
+mismatch = "rp_filter 运行检查：当前运行状态与 RP_FILTER_MODE 不一致"
+mismatch_detail = "configured={configured} current={current}"
+
+[messages.doctor.conntrack.config]
+system_still_managed = "Conntrack 配置检查：已配置 CONNTRACK_MODE=system，但仍存在 LOHA 管理的 conntrack 文件"
+system_coherent = "Conntrack 配置检查：system 模式一致"
+files_missing = "Conntrack 配置检查：缺少 LOHA 管理的 conntrack 调优文件"
+files_missing_detail = "sysctl={sysctl} modprobe={modprobe}"
+files_mismatch = "Conntrack 配置检查：LOHA 管理的 conntrack 调优文件与目标配置不一致"
+files_present = "Conntrack 配置检查：{mode} 模式文件已存在"
+
+[messages.doctor.conntrack.runtime]
+unavailable = "Conntrack 运行检查：无法读取 nf_conntrack_max"
+non_numeric = "Conntrack 运行检查：nf_conntrack_max 不是数字"
+max_mismatch = "Conntrack 运行检查：nf_conntrack_max 与目标配置不一致"
+max_mismatch_detail = "runtime={runtime} expected={expected}"
+buckets_mismatch = "Conntrack 运行检查：nf_conntrack_buckets 与目标配置不一致"
+buckets_mismatch_detail = "runtime={runtime} expected={expected}"
+match = "Conntrack 运行检查：运行时值与目标配置一致"
+
+[messages.system_feature.rpfilter.status]
+mode_line = "rp_filter 模式：{mode}"
+current_scope = "当前作用域：{scope}"
+effective_hint = "生效提示：每个接口的最终 rp_filter 为 max(all, iface)。"
+source = "来源：{source}"
+runtime = "运行时：{runtime}"
+
+[messages.system_feature.rpfilter.source]
+system_still_managed = "虽然已配置 system 模式，但现有 LOHA 管理 sysctl 内容仍在驱动 rp_filter。"
+system_clean = "system 模式下不需要 LOHA 管理 rp_filter 值；LOHA 只确保 ip_forward=1。"
+missing_file = "缺少预期的 LOHA 管理 rp_filter sysctl 文件。"
+file_match = "LOHA 管理的 rp_filter sysctl 文件与配置模式 {mode} 一致。"
+file_mismatch = "LOHA 管理的 rp_filter sysctl 文件已存在，但当前解析为 {mode}。"
+
+[messages.system_feature.rpfilter.runtime]
+system = "已配置 system 模式，运行时 rp_filter 当前不由 LOHA 管理（current={current}; {scope}）"
+system_managed = "已配置 system 模式，但运行时 rp_filter 仍由 LOHA 管理（current={current}; {scope}）"
+match = "当前运行时状态与配置的 rp_filter 模式一致（current={current}; {scope}）"
+no_file = "由于 LOHA 管理 sysctl 文件缺失，无法强制应用配置模式（current={current}; {scope}）"
+mismatch = "当前运行时状态与配置的 rp_filter 模式不一致（current={current}; {scope}）"
+
+[messages.system_feature.conntrack.status]
+mode_line = "Conntrack 模式：{mode}"
+configured_target = "配置目标：nf_conntrack_max={target_max}，nf_conntrack_buckets={buckets}"
+source = "来源：{source}"
+source_sysctl = "sysctl 文件已存在"
+source_modprobe = "modprobe 文件已存在"
+source_none = "当前不存在 LOHA 管理的调优文件"
+current_runtime = "当前运行时：{runtime}"
+runtime = "运行时：{runtime}"
+
+[messages.system_feature.conntrack.runtime]
+system = "system 模式；LOHA 不管理 conntrack"
+system_managed = "已配置 system 模式，但仍存在 LOHA 管理的 conntrack 配置文件"
+component_missing = "已配置为 {mode}，但 conntrack 调优组件不可用"
+expected_unavailable = "已配置为 {mode}，但无法推导期望的运行时目标"
+match = "运行时 nf_conntrack_max={runtime_max} 与模式 {mode} 一致"
+bucket_mismatch = "运行时 nf_conntrack_max 与模式 {mode} 一致，但 nf_conntrack_buckets={runtime_buckets}（期望 {expected_buckets}）"
+mismatch = "已配置为 {mode}，但运行时 nf_conntrack_max={runtime_max}（期望 {expected_max}）"
+
+[messages.auth]
+intro = "选择 LOHA 如何标记已授权连接。多数场景使用 ct mark 即可。"
+invalid_selection = "无效选项，请输入 1 或 2。"
+reload_prompt = "是否立即执行 reload --full 应用规则？[Y/n]"
+label_prompt = "输入 ct label 值"
+label_range_error = "ct label 值必须是 [1, 127] 范围内的整数。"
+label_conflict = "label 值 {value} 与现有 nft 规则冲突，请更换其它值。"
+mark_runtime_unavailable = "当前环境无法读取 conntrack marks，动态检测不可用。"
+mark_detection_running = "ct mark 动态冲突检测正在运行。直接按回车停止检测，并查看当前结果。"
+mark_detection_current = "当前建议的 ct mark 值：{mark}"
+mark_detection_stopped = "ct mark 动态冲突检测已停止。"
+mark_no_conflict_detected = "当前未检测到 ct mark 冲突位。"
+mark_conflict_bits = "已发现冲突位：{bits}"
+mark_conflict_bits_static = "现有非 LOHA nft / 配置状态中已引用的候选位：{bits}"
+mark_conflict_bits_runtime = "live conntrack marks 中当前占用的候选位：{bits}"
+mark_conflict_samples_static = "检测到的非 LOHA 静态 mark 值样本：{values}"
+mark_conflict_samples_runtime = "检测到的 live conntrack mark 值样本：{values}"
+mark_conflict_detected = "LOHA 在使用 {mark} 时检测到 ct mark 冲突，请选择其它候选值继续。"
+mark_watch_hint = "动态检测已停止。当前建议的 ct mark 值是 {mark}。直接回车应用，或选择其它操作。"
+mark_pick_title = "请选择其它 ct mark 候选值："
+mark_all_conflict = "当前 ct mark 候选值均检测到冲突。"
+mark_action_continue = "仍使用当前建议值继续"
+mark_action_label = "改用 ct label"
+mark_action_refresh = "重新运行动态检测"
+mark_action_prompt = "直接回车应用当前选择，或输入编号 / c / l / r"
+mark_ignore_continue = "已选择忽略 ct mark 冲突并继续切换。"
+mark_switch_label = "已切换到 ct label 模式。"
+
+[messages.rules.error]
+line_detail = "第 {lineno} 行：{detail}"
+alias_columns = "ALIAS 需要正好 2 列"
+port_columns = "PORT 需要正好 4 列"
+duplicate_alias = "重复的 alias：{name}"
+alias_missing = "alias（{name}）不存在"
+overlap_with_line = "原始监听端口/范围（{listen}）与第 {seen_lineno} 行（{proto} {seen_listen}）重叠"
+unknown_type = "未知规则类型（{kind}）"
+alias_name_prefix = "alias 名称必须以 HOST_ 或 VM_ 开头"
+invalid_ipv4 = "无效的 IPv4 值：{value}"
+invalid_proto = "协议必须是 tcp 或 udp"
+port_range = "端口必须在 1..65535 范围内"
+invalid_port_range = "无效的端口范围：{text}"
+invalid_port_offset = "无效的 +offset 端口语法：{text}"
+destination_range_required = "原始监听端口是范围时，目标端口也必须是范围"
+destination_single_required = "原始监听端口是单端口时，目标端口也必须是单端口"
+destination_range_length = "目标端口范围长度必须与原始范围长度一致"
+alias_not_found = "alias 未找到：{name}"
+alias_referenced = "alias {name} 仍被 PORT 规则引用"
+port_rule_not_found = "未找到端口规则：{proto} {listen}"
+port_prune_filter = "port prune 至少需要一个过滤条件"
+port_prune_none = "没有规则匹配 prune 过滤条件"
+
+[messages.auth.plan]
+already_mark = "当前授权模式已经是 ct mark（mark 值 {value}）。"
+switched_mark = "授权模式已切换为 ct mark（mark 值 {value}）。"
+already_label = "当前授权模式已经是 ct label（label 值 {value}）。"
+switched_label = "授权模式已切换为 ct label（label 值 {value}）。"
+check_already_mark = "Check 模式：AUTH_MODE 当前已经是 ct mark（mark 值 {value}），不需要变更。"
+check_switch_mark = "Check 模式：AUTH_MODE 将切换为 ct mark（mark 值 {value}）。"
+check_already_label = "Check 模式：AUTH_MODE 当前已经是 ct label（label 值 {value}），不需要变更。"
+check_switch_label = "Check 模式：AUTH_MODE 将切换为 ct label（label 值 {value}）。"
+reload_hint = "运行 `loha reload --full` 以应用授权模式变更。"
+
+[messages.auth.warning]
+label_probe_failed = "当前环境中的 ct label 能力探测失败；后续 reload 可能失败。"
+
+[messages.auth.current]
+mark = "当前授权模式：ct mark（mark 值 {value}）"
+label = "当前授权模式：ct label（label 值 {value}）"
+
+[messages.auth.option]
+mark = "ct mark（推荐）：性能优先，并带静态+动态冲突避让。"
+label = "ct label：更容易与现有 mark 规则隔离，当前仅做静态冲突检测。"
+
+[messages.runtime_binding.status]
+unset = "未设置"
+external_single = "当前运行时已兼容（使用已配置的单接口绑定）"
+external_auto = "当前运行时已兼容（前提是主路由表能唯一解析出默认 IPv4 出口接口）"
+external_multi_out_of_scope = "超出产品边界：当前仅支持一个外部接口"
+listen_single = "当前运行时已兼容（使用已配置的对外暴露地址列表）"
+listen_auto = "当前运行时已兼容（按当前主外部接口地址解析）"
+listen_multiple = "当前运行时已兼容（按配置的对外暴露地址列表）"
+invalid_external = "外部接口绑定值非法"
+invalid_listen = "对外暴露地址绑定值非法"
+
+[messages.runtime_binding.note]
+external_auto = "如果主路由表中存在多个默认 IPv4 路由，请不要使用 auto，而应手工填写外部接口绑定。"
+listen_auto = "对外暴露地址绑定在 auto 模式下会在运行时按主外部接口解析外部 IPv4 地址。"
+
+[messages.runtime_binding.notice]
+external_auto_materialized = "EXTERNAL_IFS=auto 已在保存前解析为 {value}；loha.conf 会保存该解析结果。"
+listen_auto_materialized = "LISTEN_IPS=auto 已在保存前解析为 {value}；loha.conf 会保存该解析结果。"
+
+[messages.wizard.steps.external_ifs]
+title = "外部接口"
+description = "选择 LOHA 用作入口面的单个外部接口。"
+
+[messages.wizard.steps.listen_ips]
+title = "对外暴露用外部 IPv4 地址"
+description = "输入一个或多个对外暴露用外部 IPv4 地址，使用逗号分隔。"
+
+[messages.wizard.steps.default_snat_ip]
+title = "主外部 IP"
+description = "选择默认出口 SNAT 使用的主外部 IP。"
+
+[messages.wizard.steps.lan_ifs]
+title = "内部接口"
+description = "选择由 LOHA 管理的内部接口。"
+
+[messages.wizard.steps.lan_nets]
+title = "内部网络"
+description = "输入由 LOHA 管理的一个或多个内部网络 IPv4 CIDR。"
+
+[messages.wizard.steps.protection_mode]
+title = "保护范围"
+description = "选择 LOHA 要阻止外网直接访问的范围。"
+
+[messages.wizard.steps.protection_mode.options]
+backends = "仅对外暴露的后端"
+nets = "指定的受保护网络"
+both = "对外暴露的后端和指定的受保护网络"
+
+[messages.wizard.steps.protected_nets]
+title = "受保护网络"
+description = "输入要让 LOHA 视为受保护网络的 IPv4 CIDR。"
+
+[messages.wizard.steps.enable_hairpin]
+title = "回流 NAT"
+description = "决定内部主机是否可以通过外部 IP 访问对外暴露的服务。"
+
+[messages.wizard.steps.enable_hairpin.options]
+on = "启用"
+off = "关闭"
+
+[messages.wizard.steps.enable_egress_snat]
+title = "默认出口 NAT"
+description = "决定是否由 LOHA 管理内部网段的默认出口 SNAT。"
+
+[messages.wizard.steps.enable_egress_snat.options]
+on = "启用"
+off = "关闭"
+
+[messages.wizard.steps.egress_nets]
+title = "出口 NAT 网段"
+description = "输入应使用 LOHA 管理默认出口 SNAT 的 IPv4 CIDR。"
+
+[messages.wizard.steps.auth_mode]
+title = "授权模式"
+description = "选择 LOHA 如何标记已授权连接。多数场景使用 ct mark 即可。"
+
+[messages.wizard.steps.auth_mode.options]
+mark = "[ct mark] 性能优先"
+label = "[ct label] 更容易与现有 mark 规则隔离"
+
+[messages.wizard.steps.enable_wan_to_wan]
+title = "允许 WAN 到 WAN 转发"
+description = "仅当外网访问者需要通过本机对外暴露地址上的端口转发，访问其他外网主机的服务时，才需要启用。大多数场景保持关闭即可。"
+
+[messages.wizard.steps.enable_wan_to_wan.options]
+on = "启用"
+off = "关闭"
+
+[messages.wizard.steps.enable_tcpmss_clamp]
+title = "自动修正 TCP MSS"
+description = "当链路存在 PMTU 黑洞风险时，自动限制 WAN 出口 TCP MSS，避免部分连接卡住。"
+
+[messages.wizard.steps.enable_tcpmss_clamp.options]
+on = "启用"
+off = "关闭"
+
+[messages.wizard.steps.counter_mode]
+title = "规则计数器"
+description = "选择是否在 nft 规则中保留计数器，便于排障和流量观察。"
+
+[messages.wizard.steps.counter_mode.options]
+off = "关闭"
+minimal = "精简（仅关键规则）"
+all = "全部（所有规则）"
+
+[messages.wizard.steps.enable_strict_validation]
+title = "严格内部源地址校验"
+description = "提前拦截来源异常的内部流量。只有在你明确知道哪些接口和网段应被视为可信内部来源时，才建议启用。"
+
+[messages.wizard.steps.enable_strict_validation.options]
+on = "启用"
+off = "关闭"
+
+[messages.wizard.steps.internal_ifs]
+title = "需要执行校验的接口"
+description = "选择要执行严格内部源地址校验的内部接口。"
+
+[messages.wizard.steps.trusted_internal_nets]
+title = "可信来源网络"
+description = "输入这些接口允许出现的可信 IPv4 CIDR；不在范围内的来源会被提前丢弃。"
+
+[messages.wizard.steps.rp_filter_mode]
+title = "高级 NAT 支持（rp_filter）"
+description = "回流 NAT 与 WAN 到 WAN 转发可能需要调整 rp_filter 处理方式，请选择 LOHA 如何管理 rp_filter。"
+
+[messages.wizard.steps.rp_filter_mode.options]
+system = "沿用系统设置"
+strict = "严格（仅受控接口）"
+loose_scoped = "宽松（仅受控接口）"
+loose_global = "宽松（所有接口）"
+
+[messages.wizard.steps.conntrack_mode]
+title = "并发连接数调优（conntrack）"
+description = "选择 LOHA 如何管理并发连接数上限与 conntrack 调优。"
+
+[messages.wizard.steps.conntrack_mode.options]
+system = "沿用系统设置"
+conservative = "[保守] 6.5 万并发（更适合低内存环境）"
+standard = "[标准] 26 万并发（适合多数场景）"
+high = "[高并发] 104 万并发（适合大内存网关）"
+auto = "[自动] 根据预估峰值和内存比例自动计算"
+custom = "[自定义] 手动输入最大并发连接数"
+
+[messages.wizard.steps.conntrack_peak]
+title = "预估并发连接峰值"
+description = "输入业务高峰期的预估并发连接数，LOHA 会据此自动计算 nf_conntrack_max。"
+
+[messages.wizard.steps.conntrack_target_max]
+title = "最大并发连接数"
+description = "输入要手动设置的最大并发连接数（实际写入 nf_conntrack_max）。"
+
+[messages.wizard.steps.conntrack_memory_percent]
+title = "用于连接跟踪的内存比例"
+description = "输入 LOHA 可用于 conntrack 规划的内存百分比，推荐保持默认值。"
+
+[glossary]
+"external interface" = "外部接口"
+"exposure" = "对外暴露"
+"default egress NAT" = "默认出口 NAT"
+"auth mode" = "授权模式"
+
+[lint.required_terms]
+"external interface" = "外部接口"
+"exposure" = "对外暴露"
+"default egress NAT" = "默认出口 NAT"
+"auth mode" = "授权模式"
+
+[lint]
+literal_tokens = ["EXTERNAL_IFS", "LISTEN_IPS", "AUTH_MODE", "CONNTRACK_MODE", "ct mark", "ct label", "rp_filter", "conntrack", "nftables", "systemd", "reload --full"]
+forbidden_substrings = ["监听服务"]

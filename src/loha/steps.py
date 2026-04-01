@@ -1,0 +1,221 @@
+from .models import MenuOption, StepDefinition
+
+
+STEPS = {
+    "external_ifs": StepDefinition(
+        step_id="external_ifs",
+        config_key="EXTERNAL_IFS",
+        title="External Interface",
+        description="Choose the single external interface used as the entry surface.",
+        input_kind="menu-single",
+    ),
+    "listen_ips": StepDefinition(
+        step_id="listen_ips",
+        config_key="LISTEN_IPS",
+        title="External IPv4 Addresses Used for Exposure",
+        description="Enter one or more external IPv4 addresses used for exposure, separated by commas.",
+        input_kind="text-ipv4-list",
+    ),
+    "default_snat_ip": StepDefinition(
+        step_id="default_snat_ip",
+        config_key="DEFAULT_SNAT_IP",
+        title="Primary External IP",
+        description="Choose the primary external IP used for default egress SNAT.",
+        input_kind="menu-single",
+        visible_when=(("LISTEN_IPS", ("__multi__",)),),
+    ),
+    "lan_ifs": StepDefinition(
+        step_id="lan_ifs",
+        config_key="LAN_IFS",
+        title="Internal Interfaces",
+        description="Choose the internal interfaces managed by LOHA.",
+        input_kind="menu-multi",
+    ),
+    "lan_nets": StepDefinition(
+        step_id="lan_nets",
+        config_key="LAN_NETS",
+        title="Internal Networks",
+        description="Enter one or more IPv4 CIDRs for the managed internal networks.",
+        input_kind="text-cidr-list",
+    ),
+    "protection_mode": StepDefinition(
+        step_id="protection_mode",
+        config_key="PROTECTION_MODE",
+        title="Protection Scope",
+        description="Choose what LOHA should protect from direct WAN access.",
+        input_kind="menu-single",
+        options=(
+            MenuOption("1", "Exposed backends only", "backends", recommended=True),
+            MenuOption("2", "User-specified protected networks", "nets"),
+            MenuOption("3", "Exposed backends and user-specified protected networks", "both"),
+        ),
+    ),
+    "protected_nets": StepDefinition(
+        step_id="protected_nets",
+        config_key="PROTECTED_NETS",
+        title="Protected Networks",
+        description="Enter the IPv4 CIDRs that LOHA should treat as protected networks.",
+        input_kind="text-cidr-list",
+        visible_when=(("PROTECTION_MODE", ("nets", "both")),),
+    ),
+    "enable_hairpin": StepDefinition(
+        step_id="enable_hairpin",
+        config_key="ENABLE_HAIRPIN",
+        title="Hairpin NAT",
+        description="Decide whether internal hosts may reach exposed services through external IPs.",
+        input_kind="menu-single",
+        options=(
+            MenuOption("1", "Enable", "on", recommended=True),
+            MenuOption("2", "Disable", "off"),
+        ),
+    ),
+    "enable_egress_snat": StepDefinition(
+        step_id="enable_egress_snat",
+        config_key="ENABLE_EGRESS_SNAT",
+        title="Default Egress NAT",
+        description="Decide whether LOHA manages default egress SNAT for internal networks.",
+        input_kind="menu-single",
+        options=(
+            MenuOption("1", "Enable", "on"),
+            MenuOption("2", "Disable", "off", recommended=True),
+        ),
+    ),
+    "egress_nets": StepDefinition(
+        step_id="egress_nets",
+        config_key="EGRESS_NETS",
+        title="Egress NAT Networks",
+        description="Enter the IPv4 CIDRs that should use LOHA-managed default egress SNAT.",
+        input_kind="text-cidr-list",
+        visible_when=(("ENABLE_EGRESS_SNAT", ("on",)),),
+    ),
+    "auth_mode": StepDefinition(
+        step_id="auth_mode",
+        config_key="AUTH_MODE",
+        title="Authorization Marking",
+        description="Choose how LOHA marks authorized connections. `ct mark` is the best default for most deployments.",
+        input_kind="menu-single",
+        options=(
+            MenuOption("1", "[ct mark] Performance-first", "mark", recommended=True),
+            MenuOption("2", "[ct label] Easier isolation from existing mark rules", "label"),
+        ),
+    ),
+    "enable_wan_to_wan": StepDefinition(
+        step_id="enable_wan_to_wan",
+        config_key="ENABLE_WAN_TO_WAN",
+        title="Allow WAN-to-WAN Forwarding",
+        description=(
+            "Enable this only when external clients must use port forwarding on this gateway's exposure "
+            "address to reach services on other external hosts. Most deployments can leave this disabled."
+        ),
+        input_kind="menu-single",
+        options=(
+            MenuOption("1", "Enable", "on"),
+            MenuOption("2", "Disable", "off", recommended=True),
+        ),
+    ),
+    "enable_tcpmss_clamp": StepDefinition(
+        step_id="enable_tcpmss_clamp",
+        config_key="ENABLE_TCPMSS_CLAMP",
+        title="Automatic TCP MSS Adjustment",
+        description="Enable this when PMTU black holes are a risk; LOHA will adjust WAN egress TCP MSS to avoid stalled connections.",
+        input_kind="menu-single",
+        options=(
+            MenuOption("1", "Enable", "on"),
+            MenuOption("2", "Disable", "off", recommended=True),
+        ),
+    ),
+    "counter_mode": StepDefinition(
+        step_id="counter_mode",
+        config_key="COUNTER_MODE",
+        title="Rule Counters",
+        description="Choose how many nft rule counters to keep for troubleshooting and traffic observation.",
+        input_kind="menu-single",
+        options=(
+            MenuOption("1", "Off", "off"),
+            MenuOption("2", "Minimal (important rules only)", "minimal", recommended=True),
+            MenuOption("3", "All rules", "all"),
+        ),
+    ),
+    "enable_strict_validation": StepDefinition(
+        step_id="enable_strict_validation",
+        config_key="ENABLE_STRICT_LAN_VALIDATION",
+        title="Strict Internal Source Validation",
+        description=(
+            "Drop internal traffic early when its source address does not match the expected trusted networks. "
+            "Enable this only when you know which interfaces and IPv4 CIDRs should be trusted."
+        ),
+        input_kind="menu-single",
+        options=(
+            MenuOption("1", "Enable", "on"),
+            MenuOption("2", "Disable", "off", recommended=True),
+        ),
+    ),
+    "internal_ifs": StepDefinition(
+        step_id="internal_ifs",
+        config_key="INTERNAL_IFS",
+        title="Interfaces to Validate",
+        description="Choose the internal interfaces that should use strict source validation.",
+        input_kind="menu-multi",
+        visible_when=(("ENABLE_STRICT_LAN_VALIDATION", ("on",)),),
+    ),
+    "trusted_internal_nets": StepDefinition(
+        step_id="trusted_internal_nets",
+        config_key="TRUSTED_INTERNAL_NETS",
+        title="Trusted Source Networks",
+        description="Enter the trusted IPv4 CIDRs allowed on those interfaces. Sources outside these ranges will be dropped early.",
+        input_kind="text-cidr-list",
+        visible_when=(("ENABLE_STRICT_LAN_VALIDATION", ("on",)),),
+    ),
+    "rp_filter_mode": StepDefinition(
+        step_id="rp_filter_mode",
+        config_key="RP_FILTER_MODE",
+        title="Advanced NAT Support (rp_filter)",
+        description="Hairpin NAT and WAN-to-WAN forwarding may require a different rp_filter handling mode. Choose how LOHA should manage rp_filter.",
+        input_kind="menu-single",
+        options=(
+            MenuOption("1", "Keep system defaults", "system", recommended=True),
+            MenuOption("2", "Strict (managed interfaces only)", "strict"),
+            MenuOption("3", "Loose (managed interfaces only)", "loose_scoped"),
+            MenuOption("4", "Loose (all interfaces)", "loose_global"),
+        ),
+    ),
+    "conntrack_mode": StepDefinition(
+        step_id="conntrack_mode",
+        config_key="CONNTRACK_MODE",
+        title="Connection Capacity Tuning (conntrack)",
+        description="Choose how LOHA manages concurrent connection capacity and conntrack tuning.",
+        input_kind="menu-single",
+        options=(
+            MenuOption("1", "Keep system defaults", "system", recommended=True),
+            MenuOption("2", "[Conservative] 65k concurrent connections (better for low-memory systems)", "conservative"),
+            MenuOption("3", "[Standard] 262k concurrent connections (fits most deployments)", "standard"),
+            MenuOption("4", "[High] 1,048k concurrent connections (better for high-memory gateways)", "high"),
+            MenuOption("5", "[Auto] Calculate from estimated peak concurrency and memory percentage", "auto"),
+            MenuOption("6", "[Custom] Enter the maximum concurrent connections manually", "custom"),
+        ),
+    ),
+    "conntrack_peak": StepDefinition(
+        step_id="conntrack_peak",
+        config_key="CONNTRACK_PEAK",
+        title="Estimated Peak Concurrent Connections",
+        description="Enter the expected peak number of concurrent connections. LOHA will use this to calculate nf_conntrack_max automatically.",
+        input_kind="text-int",
+        visible_when=(("CONNTRACK_MODE", ("auto",)),),
+    ),
+    "conntrack_target_max": StepDefinition(
+        step_id="conntrack_target_max",
+        config_key="CONNTRACK_TARGET_MAX",
+        title="Maximum Concurrent Connections",
+        description="Enter the maximum concurrent connections to set manually. This writes nf_conntrack_max.",
+        input_kind="text-int",
+        visible_when=(("CONNTRACK_MODE", ("custom",)),),
+    ),
+    "conntrack_memory_percent": StepDefinition(
+        step_id="conntrack_memory_percent",
+        config_key="CONNTRACK_MEMORY_PERCENT",
+        title="Memory Share for Connection Tracking",
+        description="Enter the percentage of system memory LOHA may use when planning conntrack capacity.",
+        input_kind="text-int",
+        visible_when=(("CONNTRACK_MODE", ("auto", "custom")),),
+    ),
+}

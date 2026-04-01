@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose an enhancement or workflow improvement for LOHA Port Forwarder.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What limitation or friction are you running into today?
+      placeholder: Describe the operational or product gap.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like LOHA to do instead?
+      placeholder: Describe the change you want.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or other designs did you consider?
+      placeholder: List alternatives, even if they are incomplete.
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and tradeoffs
+      description: Mention backward compatibility, operational concerns, or migration expectations if you know them.
+      placeholder: Optional notes about compatibility, rollout, or risks.
