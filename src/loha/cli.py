@@ -566,6 +566,20 @@ def _localized_exception_message(runtime: Optional[RuntimeI18N], exc: Exception)
     return message
 
 
+def _format_plain_error(runtime: Optional[RuntimeI18N], exc: Exception) -> str:
+    message = _localized_exception_message(runtime, exc)
+    exit_code = _exit_code_for_exception(exc)
+    if exit_code == EXIT_CODE_LOCK:
+        return _t(
+            runtime,
+            "common.error_with_code",
+            "ERROR [{code}]: {message}",
+            code=_error_code_for_exit_code(exit_code),
+            message=message,
+        )
+    return _t(runtime, "common.error", "ERROR: {message}", message=message)
+
+
 def _preview_text_artifact(path: Path, content: str, *, empty_means_remove: bool = False):
     current = _read_path_text(path)
     if content == "" and empty_means_remove:
@@ -1201,7 +1215,7 @@ def _build_advanced_status_lines(
 
 
 def _print_menu_error(runtime: RuntimeI18N, exc: Exception) -> None:
-    print(_t(runtime, "common.error", "ERROR: {message}", message=_localized_exception_message(runtime, exc)))
+    print(_format_plain_error(runtime, exc))
 
 
 def _run_menu_action(runtime: RuntimeI18N, func, *args, **kwargs):
@@ -1480,7 +1494,7 @@ def _prompt_validated_text(
         try:
             return validator(raw)
         except (ConfigValidationError, RulesValidationError) as exc:
-            print(_t(runtime, "common.error", "ERROR: {message}", message=_localized_exception_message(runtime, exc)))
+            print(_format_plain_error(runtime, exc))
 
 
 def _prompt_positive_int(
@@ -3637,14 +3651,7 @@ def main(argv=None) -> int:
         if getattr(args, "json", False):
             _emit_json(_json_error_payload(str(exc), error_type=exc.__class__.__name__, exit_code=exit_code))
         else:
-            print(
-                _t(
-                    runtime,
-                    "common.error",
-                    "ERROR: {message}",
-                    message=_localized_exception_message(runtime, exc),
-                )
-            )
+            print(_format_plain_error(runtime, exc))
         return exit_code
 
 

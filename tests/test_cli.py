@@ -1361,7 +1361,27 @@ class CliTests(unittest.TestCase):
         with patch("loha.cli.build_parser", return_value=parser), redirect_stdout(out):
             exit_code = main([])
         self.assertEqual(4, exit_code)
-        self.assertIn("busy", out.getvalue())
+        self.assertEqual("ERROR [lock_conflict]: busy\n", out.getvalue())
+
+    def test_main_non_json_lock_error_uses_runtime_locale_and_error_code(self):
+        paths = self._paths()
+        self._write_config(paths, history_mode="on", locale="zh_CN")
+        parser = SimpleNamespace(
+            parse_args=lambda _argv=None: Namespace(
+                command="dummy",
+                json=False,
+                etc_dir=str(paths.etc_dir),
+                prefix=str(paths.prefix),
+                run_dir=str(paths.run_dir),
+                systemd_dir=str(paths.systemd_unit_dir),
+                func=lambda _args: (_ for _ in ()).throw(RulesLockError("busy")),
+            )
+        )
+        out = io.StringIO()
+        with patch("loha.cli.build_parser", return_value=parser), redirect_stdout(out):
+            exit_code = main([])
+        self.assertEqual(4, exit_code)
+        self.assertEqual("错误 [lock_conflict]：busy\n", out.getvalue())
 
     def test_config_set_enable_history_prints_status(self):
         paths = self._cli_paths()
