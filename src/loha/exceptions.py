@@ -26,6 +26,14 @@ class RulesLockError(LohaError):
     """Raised when the rules.conf mutation lock cannot be acquired."""
 
 
+class ControlLockError(LohaError):
+    """Raised when the control-plane transaction lock cannot be acquired."""
+
+
+class ControlStateError(LohaError):
+    """Raised when control-plane metadata cannot be reconciled safely."""
+
+
 class ApplyError(LohaError):
     """Raised when a system apply path fails."""
 

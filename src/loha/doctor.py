@@ -1,13 +1,19 @@
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
-from .config import load_config
+from .control_tx import inspect_control_plane_status, read_desired_state
 from .constants import LOHA_NFT_TABLE_NAME
-from .exceptions import ApplyError, ConfigSyntaxError, ConfigValidationError, RulesSyntaxError, RulesValidationError
+from .exceptions import (
+    ApplyError,
+    ConfigSyntaxError,
+    ConfigValidationError,
+    ControlStateError,
+    RulesSyntaxError,
+    RulesValidationError,
+)
 from .loader import LoaderService
 from .models import DoctorResult, Paths
 from .runtime_binding import runtime_binding_doctor_results
-from .rules import load_rules
 from .system import SubprocessSystemAdapter, SystemAdapter
 from .system_features import (
     collect_conntrack_status,
@@ -313,6 +319,82 @@ def _listener_conflict_results(rules, adapter: SystemAdapter) -> List[DoctorResu
     ]
 
 
+def _control_plane_doctor_results(paths: Paths) -> List[DoctorResult]:
+    status = inspect_control_plane_status(paths)
+    results: List[DoctorResult] = []
+    if not status.manifest_present:
+        results.append(
+            _doctor_result(
+                "warn",
+                "doctor.control.manifest_missing",
+                "Control-plane state check: state.json is missing",
+            )
+        )
+    elif status.state_mismatch:
+        results.append(
+            _doctor_result(
+                "warn",
+                "doctor.control.manifest_mismatch",
+                "Control-plane state check: state.json does not match live desired-state files",
+            )
+        )
+    else:
+        results.append(
+            _doctor_result(
+                "pass",
+                "doctor.control.manifest_ok",
+                "Control-plane state check: state.json matches live desired-state files",
+            )
+        )
+    if status.pending_txn_present:
+        results.append(
+            _doctor_result(
+                "warn",
+                "doctor.control.pending_txn",
+                "Control-plane transaction check: a pending desired-state transaction requires reconciliation",
+            )
+        )
+    else:
+        results.append(
+            _doctor_result(
+                "pass",
+                "doctor.control.pending_clear",
+                "Control-plane transaction check: no pending desired-state transaction remains",
+            )
+        )
+    if status.pending_actions:
+        results.append(
+            _doctor_result(
+                "warn",
+                "doctor.control.pending_runtime",
+                "Control-plane runtime check: desired state is ahead of runtime sync",
+                detail_key="doctor.control.pending_runtime_detail",
+                detail_default="pending actions: {actions}; desired revision={desired_revision}, applied revision={applied_revision}",
+                actions=", ".join(status.pending_actions),
+                desired_revision=status.desired_revision,
+                applied_revision=status.applied_revision,
+            )
+        )
+    else:
+        results.append(
+            _doctor_result(
+                "pass",
+                "doctor.control.runtime_synced",
+                "Control-plane runtime check: desired state and runtime state are synchronized",
+            )
+        )
+    if status.last_apply_status == "failed":
+        results.append(
+            _doctor_result(
+                "warn",
+                "doctor.control.last_apply_failed",
+                "Control-plane apply check: the last apply attempt failed",
+                detail=status.last_error,
+            )
+        )
+    return results
+
+
 def run_doctor(paths: Optional[Paths] = None, adapter: Optional[SystemAdapter] = None) -> List[DoctorResult]:
     paths = paths or Paths()
     adapter = adapter or SubprocessSystemAdapter()
@@ -339,16 +421,17 @@ def run_doctor(paths: Optional[Paths] = None, adapter: Optional[SystemAdapter] =
             )
 
     try:
-        config = load_config(paths.loha_conf)
+        snapshot = read_desired_state(paths)
+        config = snapshot.config
         results.append(_doctor_result("pass", "doctor.config.valid", "Config check: loha.conf is valid"))
-    except (FileNotFoundError, ConfigSyntaxError, ConfigValidationError) as exc:
+    except (FileNotFoundError, ConfigSyntaxError, ConfigValidationError, ControlStateError) as exc:
         results.append(_doctor_result("fail", "doctor.config.invalid", "Config check: loha.conf is invalid", detail=str(exc)))
         return results
 
     try:
-        rules = load_rules(paths.rules_conf)
+        rules = snapshot.rules
         results.append(_doctor_result("pass", "doctor.rules.valid", "Rules check: rules.conf is valid"))
-    except (FileNotFoundError, RulesSyntaxError, RulesValidationError) as exc:
+    except (FileNotFoundError, RulesSyntaxError, RulesValidationError, ControlStateError) as exc:
         results.append(_doctor_result("fail", "doctor.rules.invalid", "Rules check: rules.conf is invalid", detail=str(exc)))
         return results
 
@@ -362,6 +445,7 @@ def run_doctor(paths: Optional[Paths] = None, adapter: Optional[SystemAdapter] =
     results.extend(_nft_runtime_doctor_results(config, adapter, systemd_state=systemd_state))
     results.extend(_listener_conflict_results(rules, adapter))
     results.extend(runtime_binding_doctor_results(config.as_dict(), adapter))
+    results.extend(_control_plane_doctor_results(paths))
 
     service = LoaderService(paths=paths, adapter=adapter)
     try:

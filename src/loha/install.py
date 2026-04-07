@@ -9,8 +9,9 @@ from typing import Iterable, Optional, Sequence, Tuple
 from .config_access import load_management_config
 from .config import normalize_mapping, render_canonical_text, recommended_config
 from .constants import LOHA_NFT_TABLE_NAME
+from .control_tx import commit_desired_state, control_file_lock, remove_runtime_state
 from .exceptions import ApplyError, LohaError
-from .history import capture_snapshot_if_enabled, clear_rollback_checkpoint, write_state_files
+from .history import capture_snapshot_if_enabled
 from .i18n import (
     RuntimeI18N,
     build_runtime_i18n,
@@ -762,14 +763,18 @@ def _persist_install_state(
     *,
     config: CanonicalConfig,
     rules_text: str,
+    assume_locked: bool = False,
 ) -> InstallStepResult:
     try:
-        write_state_files(
+        commit_desired_state(
             paths,
             config_text=render_canonical_text(config),
             rules_text=rules_text,
+            source="installer",
+            reason="install-apply",
+            capture_history=False,
+            assume_locked=assume_locked,
         )
-        clear_rollback_checkpoint(paths)
     except Exception as exc:
         return _step_error(
             "install.history.write_failed",
@@ -844,16 +849,24 @@ def _run_best_effort(adapter: SystemAdapter, argv: Sequence[str]) -> None:
     adapter.run(argv, check=False)
 
 
-def _remove_installation_payload(paths: Paths, *, dry_run: bool, i18n: RuntimeI18N) -> InstallStepResult:
+def _remove_installation_payload(
+    paths: Paths,
+    *,
+    dry_run: bool,
+    i18n: RuntimeI18N,
+    remove_run_dir: bool = True,
+) -> InstallStepResult:
     try:
-        for target in (
+        targets = [
             paths.cli_wrapper,
             paths.loader_wrapper,
             paths.package_root,
             paths.share_dir,
             paths.service_unit,
-            paths.run_dir,
-        ):
+        ]
+        if remove_run_dir:
+            targets.append(paths.run_dir)
+        for target in targets:
             _remove_path(target, dry_run=dry_run, i18n=i18n)
     except Exception as exc:
         return _step_error(
@@ -989,52 +1002,58 @@ def cmd_install(args) -> int:
             )
             return 1
     try:
-        deploy_result = _deploy_install_files(
-            paths,
-            repo_root=repo_root,
-            upstream_target=upstream_target,
-            dry_run=args.dry_run,
-            i18n=i18n,
-        )
-        if not deploy_result.ok:
-            _print_error(i18n, deploy_result.error)
-            _recover_failed_install(recovery_state, adapter=adapter, i18n=i18n)
-            return 1
-        if not args.dry_run:
-            persist_result = _persist_install_state(paths, config=config, rules_text=render_rules_text(rules))
-            if not persist_result.ok:
-                _print_error(i18n, persist_result.error)
+        with control_file_lock(paths):
+            deploy_result = _deploy_install_files(
+                paths,
+                repo_root=repo_root,
+                upstream_target=upstream_target,
+                dry_run=args.dry_run,
+                i18n=i18n,
+            )
+            if not deploy_result.ok:
+                _print_error(i18n, deploy_result.error)
                 _recover_failed_install(recovery_state, adapter=adapter, i18n=i18n)
                 return 1
-        system_feature_result = _apply_install_system_features(paths, config, adapter, dry_run=args.dry_run, i18n=i18n)
-        if not system_feature_result.ok:
-            _print_error(i18n, system_feature_result.error)
-            _recover_failed_install(
-                recovery_state,
-                adapter=adapter,
-                i18n=i18n,
-                reload_sysctl_runtime=system_feature_result.error is not None
-                and system_feature_result.error.message_key == "install.system_features.sysctl_failed",
-            )
-            return 1
-        activation_result = _activate_install_service(paths, adapter, dry_run=args.dry_run, i18n=i18n)
-        if not activation_result.ok:
-            _print_error(i18n, activation_result.error)
-            activation_command = ""
-            if activation_result.error is not None:
-                activation_command = str(activation_result.error.values.get("command", ""))
-            _recover_failed_install(
-                recovery_state,
-                adapter=adapter,
-                i18n=i18n,
-                reload_sysctl_runtime=True,
-                reload_systemd_manager=activation_result.error is not None
-                and activation_result.error.message_key == "install.service.action_failed",
-                restore_service_runtime=activation_result.error is not None
-                and activation_result.error.message_key == "install.service.action_failed"
-                and activation_command == f"systemctl restart {paths.service_unit.name}",
-            )
-            return 1
+            if not args.dry_run:
+                persist_result = _persist_install_state(
+                    paths,
+                    config=config,
+                    rules_text=render_rules_text(rules),
+                    assume_locked=True,
+                )
+                if not persist_result.ok:
+                    _print_error(i18n, persist_result.error)
+                    _recover_failed_install(recovery_state, adapter=adapter, i18n=i18n)
+                    return 1
+            system_feature_result = _apply_install_system_features(paths, config, adapter, dry_run=args.dry_run, i18n=i18n)
+            if not system_feature_result.ok:
+                _print_error(i18n, system_feature_result.error)
+                _recover_failed_install(
+                    recovery_state,
+                    adapter=adapter,
+                    i18n=i18n,
+                    reload_sysctl_runtime=system_feature_result.error is not None
+                    and system_feature_result.error.message_key == "install.system_features.sysctl_failed",
+                )
+                return 1
+            activation_result = _activate_install_service(paths, adapter, dry_run=args.dry_run, i18n=i18n)
+            if not activation_result.ok:
+                _print_error(i18n, activation_result.error)
+                activation_command = ""
+                if activation_result.error is not None:
+                    activation_command = str(activation_result.error.values.get("command", ""))
+                _recover_failed_install(
+                    recovery_state,
+                    adapter=adapter,
+                    i18n=i18n,
+                    reload_sysctl_runtime=True,
+                    reload_systemd_manager=activation_result.error is not None
+                    and activation_result.error.message_key == "install.service.action_failed",
+                    restore_service_runtime=activation_result.error is not None
+                    and activation_result.error.message_key == "install.service.action_failed"
+                    and activation_command == f"systemctl restart {paths.service_unit.name}",
+                )
+                return 1
         print(_t(i18n, "install.completed", "Installation files are in place."))
         return 0
     finally:
@@ -1087,21 +1106,26 @@ def cmd_uninstall(args) -> int:
             default=False,
             i18n=i18n,
         )
-    payload_result = _remove_installation_payload(paths, dry_run=False, i18n=i18n)
-    if not payload_result.ok:
-        _print_error(i18n, payload_result.error)
-        return 1
-    data_result = _remove_uninstall_data(
-        paths,
-        remove_config_data=remove_config_data,
-        remove_system_tuning=remove_system_tuning,
-        dry_run=False,
-        i18n=i18n,
-    )
-    if not data_result.ok:
-        _print_error(i18n, data_result.error)
-        return 1
-    _sync_uninstall_runtime(paths, adapter, dry_run=False, i18n=i18n)
+    with control_file_lock(paths):
+        payload_result = _remove_installation_payload(paths, dry_run=False, i18n=i18n, remove_run_dir=False)
+        if not payload_result.ok:
+            _print_error(i18n, payload_result.error)
+            return 1
+        data_result = _remove_uninstall_data(
+            paths,
+            remove_config_data=remove_config_data,
+            remove_system_tuning=remove_system_tuning,
+            dry_run=False,
+            i18n=i18n,
+        )
+        if not data_result.ok:
+            _print_error(i18n, data_result.error)
+            return 1
+        remove_runtime_state(paths, assume_locked=True)
+        for runtime_file in (paths.control_state_file, paths.debug_ruleset_file):
+            _remove_path(runtime_file, dry_run=False, i18n=i18n)
+        _sync_uninstall_runtime(paths, adapter, dry_run=False, i18n=i18n)
+    _remove_path(paths.run_dir, dry_run=False, i18n=i18n)
     print(_t(i18n, "install.uninstall.completed", "LOHA has been removed from the system."))
     return 0
 

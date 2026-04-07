@@ -6,6 +6,7 @@ import select
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import is_dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Optional
@@ -17,7 +18,7 @@ from .auth import (
     survey_auth_mark_candidates,
     used_auth_labels,
 )
-from .config_access import load_management_config, normalize_management_state, parse_management_config_text
+from .config_access import normalize_management_state, parse_management_config_text
 from .constants import CONFIG_KEYS
 from .config import (
     join_csv,
@@ -29,10 +30,23 @@ from .config import (
     recommended_config,
     render_canonical_text,
 )
+from .control_tx import (
+    build_desired_snapshot_from_texts,
+    commit_desired_state,
+    control_file_lock,
+    inspect_control_plane_status,
+    read_desired_state,
+    read_desired_texts,
+    read_runtime_state,
+    update_runtime_state,
+    write_runtime_state,
+)
 from .config_view import build_config_show_sections, build_runtime_integration_lines
 from .doctor import format_doctor_result_lines, run_doctor, summarize_doctor_results
 from .exceptions import (
     ApplyError,
+    ControlLockError,
+    ControlStateError,
     ConfigSyntaxError,
     ConfigValidationError,
     HistoryError,
@@ -52,7 +66,7 @@ from .i18n import (
 )
 from .input_parsing import InputValidationError, parse_yes_no
 from .loader import LoaderService
-from .models import ConfigUpdateResult, LocalizedMessage, Paths
+from .models import ConfigUpdateResult, LocalizedMessage, Paths, RuntimeStateSnapshot
 from .runtime_binding import describe_binding_status, sync_runtime_binding_state, sync_toggle_shortcut_state
 from .rules import (
     add_alias,
@@ -121,10 +135,16 @@ def _paths_from_args(args) -> Paths:
     )
 
 
-def _load_or_default_config(paths: Paths, *, adapter: Optional[SubprocessSystemAdapter] = None):
+def _load_or_default_config(
+    paths: Paths,
+    *,
+    adapter: Optional[SubprocessSystemAdapter] = None,
+    assume_locked: bool = False,
+):
     if paths.loha_conf.exists():
         adapter = adapter or SubprocessSystemAdapter()
-        config, _notices = load_management_config(paths.loha_conf, adapter)
+        config_text, _rules_text = read_desired_texts(paths, assume_locked=assume_locked)
+        config, _notices = normalize_management_state(parse_management_config_text(config_text), adapter)
         return config
     return recommended_config()
 
@@ -133,11 +153,13 @@ def _load_management_config_or_default(
     paths: Paths,
     *,
     adapter: Optional[SubprocessSystemAdapter] = None,
+    assume_locked: bool = False,
 ):
     adapter = adapter or SubprocessSystemAdapter()
     if not paths.loha_conf.exists():
         return recommended_config(), ()
-    return load_management_config(paths.loha_conf, adapter)
+    config_text, _rules_text = read_desired_texts(paths, assume_locked=assume_locked)
+    return normalize_management_state(parse_management_config_text(config_text), adapter)
 
 
 def _resolve_config_key(raw_key: str) -> str:
@@ -154,14 +176,22 @@ def _service_reload(
     adapter: Optional[SubprocessSystemAdapter] = None,
     runtime: Optional[RuntimeI18N] = None,
 ) -> str:
+    result = _service_reload_result(paths, full=full, adapter=adapter, runtime=runtime)
+    return result["message"]
+
+
+def _service_reload_result(
+    paths: Paths,
+    *,
+    full: bool,
+    adapter: Optional[SubprocessSystemAdapter] = None,
+    runtime: Optional[RuntimeI18N] = None,
+):
     adapter = adapter or SubprocessSystemAdapter()
     unit_name = paths.service_unit.name
+    requested_mode = "full" if full else "reload"
     if full:
         adapter.systemctl("restart", unit_name)
-        result = LocalizedMessage(
-            "loader.apply.full",
-            "Full ruleset initialized successfully.",
-        )
     else:
         if not adapter.command_exists("systemctl"):
             raise ApplyError("Missing 'systemctl' command")
@@ -170,16 +200,25 @@ def _service_reload(
             stderr = status.stderr.strip() or status.stdout.strip() or f"{unit_name} is not active"
             raise ApplyError(stderr)
         adapter.systemctl("reload", unit_name)
-        result = LocalizedMessage(
-            "loader.apply.reload",
-            "Mappings hot-swapped successfully.",
-        )
-    if runtime is None:
-        return result.render()
-    return _render_message(runtime, result)
+    control_plane = inspect_control_plane_status(paths)
+    effective_mode = control_plane.last_apply_mode or requested_mode
+    message = LocalizedMessage(
+        "loader.apply.full" if effective_mode == "full" else "loader.apply.reload",
+        "Full ruleset initialized successfully." if effective_mode == "full" else "Mappings hot-swapped successfully.",
+    )
+    return {
+        "message": _render_message(runtime, message) if runtime is not None else message.render(),
+        "requested_mode": requested_mode,
+        "effective_mode": effective_mode,
+        "desired_revision": control_plane.desired_revision,
+        "applied_revision": control_plane.applied_revision,
+        "runtime_synced": control_plane.runtime_synced,
+        "pending_actions": list(control_plane.pending_actions),
+    }
 
 
-def _load_rules_or_empty(paths: Paths):
+def _load_rules_or_empty(paths: Paths, *, assume_locked: bool = False):
+    del assume_locked
     return load_rules(paths.rules_conf)
 
 
@@ -357,9 +396,15 @@ def _result_code_for_category(category: str) -> str:
         return "render"
     if category.endswith("_status"):
         return "status"
+    if category == "reload":
+        return "reload"
+    if category == "rollback":
+        return "rollback"
     if category == "state_summary":
         return "summary"
     if category == "config_show":
+        return "show"
+    if category == "history_show":
         return "show"
     if category == "doctor_report":
         return "report"
@@ -395,9 +440,9 @@ def _exit_code_for_exception(exc: Exception) -> int:
         return EXIT_CODE_USAGE_OR_SYNTAX
     if isinstance(exc, (ConfigValidationError, RulesValidationError, InputValidationError)):
         return EXIT_CODE_VALIDATION
-    if isinstance(exc, RulesLockError):
+    if isinstance(exc, (RulesLockError, ControlLockError)):
         return EXIT_CODE_LOCK
-    if isinstance(exc, ApplyError):
+    if isinstance(exc, (ApplyError, ControlStateError)):
         return EXIT_CODE_APPLY
     if isinstance(exc, HistoryError):
         return EXIT_CODE_HISTORY
@@ -615,9 +660,13 @@ def _apply_rules_mutation(
     reason: str,
     mutate: Callable,
 ):
-    config = _load_or_default_config(paths)
-    with rules_file_lock(paths.rules_conf):
-        current = load_rules(paths.rules_conf)
+    with control_file_lock(paths):
+        if paths.loha_conf.exists():
+            config = _load_or_default_config(paths, assume_locked=True)
+            current = load_rules(paths.rules_conf)
+        else:
+            config = recommended_config()
+            current = load_rules(paths.rules_conf)
         updated_rules = mutate(current)
         artifacts = _preview_transaction_artifacts(
             paths,
@@ -626,12 +675,13 @@ def _apply_rules_mutation(
         )
         changed = _artifacts_would_change(artifacts)
         if changed:
-            write_transaction(
+            commit_desired_state(
                 paths,
                 config_text=render_canonical_text(config),
                 rules_text=render_rules_text(updated_rules),
                 source=source,
                 reason=reason,
+                assume_locked=True,
             )
         return config, updated_rules, artifacts, changed
 
@@ -787,6 +837,7 @@ def _json_config_show_payload(
             "rp_filter": _json_rpfilter_report_payload(rpfilter_report),
             "conntrack": _json_conntrack_report_payload(conntrack_report),
         },
+        control_plane=_json_control_plane_payload(paths),
         notices=[_json_localized_message(message) for message in notices],
     )
 
@@ -807,6 +858,95 @@ def _json_doctor_payload(results, *, exit_code: int):
         },
         results=[_json_doctor_result(result) for result in results],
     )
+
+
+def _json_control_plane_payload(paths: Paths):
+    status = inspect_control_plane_status(paths)
+    return {
+        "desired_revision": status.desired_revision,
+        "applied_revision": status.applied_revision,
+        "runtime_synced": status.runtime_synced,
+        "pending_actions": list(status.pending_actions),
+        "last_apply_mode": status.last_apply_mode,
+        "last_apply_status": status.last_apply_status,
+        "last_error": status.last_error,
+        "manifest_present": status.manifest_present,
+        "pending_txn_present": status.pending_txn_present,
+        "state_mismatch": status.state_mismatch,
+    }
+
+
+def _json_reload_payload(result):
+    return _json_result_payload(
+        "reload",
+        ok=True,
+        requested_mode=result["requested_mode"],
+        effective_mode=result["effective_mode"],
+        desired_revision=result["desired_revision"],
+        applied_revision=result["applied_revision"],
+        runtime_synced=result["runtime_synced"],
+        pending_actions=result["pending_actions"],
+    )
+
+
+def _json_history_status_payload(paths: Paths):
+    return _json_result_payload(
+        "history_status",
+        ok=True,
+        enabled=history_enabled(paths),
+        current_revision=_json_control_plane_payload(paths)["desired_revision"],
+        snapshot_count=len(list_snapshots(paths)),
+        has_rollback_checkpoint=load_rollback_checkpoint(paths) is not None,
+    )
+
+
+def _json_history_show_payload(paths: Paths):
+    snapshots = list_snapshots(paths)
+    checkpoint = load_rollback_checkpoint(paths)
+    return _json_result_payload(
+        "history_show",
+        ok=True,
+        current_revision=_json_control_plane_payload(paths)["desired_revision"],
+        snapshots=[
+            {
+                "index": index,
+                "created_at_epoch": entry.created_at_epoch,
+                "source": entry.source,
+                "reason": entry.reason,
+                "config_hash": entry.config_hash,
+                "rules_hash": entry.rules_hash,
+            }
+            for index, entry in enumerate(snapshots, start=1)
+        ],
+        rollback_checkpoint=(
+            {
+                "created_at_epoch": checkpoint.created_at_epoch,
+                "source": checkpoint.source,
+                "reason": checkpoint.reason,
+                "config_hash": checkpoint.config_hash,
+                "rules_hash": checkpoint.rules_hash,
+            }
+            if checkpoint is not None
+            else None
+        ),
+    )
+
+
+def _json_rollback_payload(paths: Paths, *, selector: str, outcome, apply_message: str = ""):
+    control_plane = _json_control_plane_payload(paths)
+    payload = _json_result_payload(
+        "rollback",
+        ok=True,
+        selector=selector,
+        restored_from=outcome.restored_from,
+        desired_revision=control_plane["desired_revision"],
+        applied_revision=control_plane["applied_revision"],
+        runtime_synced=control_plane["runtime_synced"],
+        pending_actions=control_plane["pending_actions"],
+    )
+    if apply_message:
+        payload["apply_message"] = apply_message
+    return payload
 
 
 def _json_config_update_payload(
@@ -895,9 +1035,15 @@ def _config_key_label(raw_key: str) -> str:
     return raw_key.strip().lower().replace("-", "_")
 
 
-def _resolve_config_update(paths: Paths, updates, *, adapter: Optional[SubprocessSystemAdapter] = None):
+def _resolve_config_update(
+    paths: Paths,
+    updates,
+    *,
+    adapter: Optional[SubprocessSystemAdapter] = None,
+    assume_locked: bool = False,
+):
     adapter = adapter or SubprocessSystemAdapter()
-    base_config, base_notices = _load_management_config_or_default(paths, adapter=adapter)
+    base_config, base_notices = _load_management_config_or_default(paths, adapter=adapter, assume_locked=assume_locked)
     state = base_config.as_dict()
     changed_keys = set()
     notices = list(base_notices)
@@ -913,10 +1059,16 @@ def _resolve_config_update(paths: Paths, updates, *, adapter: Optional[Subproces
     return ConfigUpdateResult(config=config, notices=tuple(notices)), changed_keys
 
 
-def _plan_config_update(paths: Paths, updates, *, adapter: Optional[SubprocessSystemAdapter] = None):
+def _plan_config_update(
+    paths: Paths,
+    updates,
+    *,
+    adapter: Optional[SubprocessSystemAdapter] = None,
+    assume_locked: bool = False,
+):
     adapter = adapter or SubprocessSystemAdapter()
-    result, changed_keys = _resolve_config_update(paths, updates, adapter=adapter)
-    rules = _load_rules_or_empty(paths)
+    result, changed_keys = _resolve_config_update(paths, updates, adapter=adapter, assume_locked=assume_locked)
+    rules = _load_rules_or_empty(paths, assume_locked=assume_locked)
     transaction_artifacts = _preview_transaction_artifacts(
         paths,
         config_text=render_canonical_text(result.config),
@@ -932,11 +1084,17 @@ def _plan_config_update(paths: Paths, updates, *, adapter: Optional[SubprocessSy
     return result, changed_keys, rules, transaction_artifacts, side_effect_artifacts, actions, artifacts
 
 
-def _plan_config_normalize(paths: Paths, *, adapter: Optional[SubprocessSystemAdapter] = None):
+def _plan_config_normalize(
+    paths: Paths,
+    *,
+    adapter: Optional[SubprocessSystemAdapter] = None,
+    assume_locked: bool = False,
+):
     adapter = adapter or SubprocessSystemAdapter()
-    state = parse_management_config_text(paths.loha_conf.read_text(encoding="utf-8"))
+    config_text, _rules_text = read_desired_texts(paths, assume_locked=assume_locked)
+    state = parse_management_config_text(config_text)
     config, notices = normalize_management_state(state, adapter)
-    rules = _load_rules_or_empty(paths)
+    rules = _load_rules_or_empty(paths, assume_locked=assume_locked)
     transaction_artifacts = _preview_transaction_artifacts(
         paths,
         config_text=render_canonical_text(config),
@@ -1185,7 +1343,11 @@ def cmd_port_prune(args) -> int:
 def cmd_reload(args) -> int:
     paths = _paths_from_args(args)
     runtime = _runtime_i18n(paths)
-    print(_service_reload(paths, full=args.full, runtime=runtime))
+    result = _service_reload_result(paths, full=args.full, runtime=runtime)
+    if getattr(args, "json", False):
+        _emit_json(_json_reload_payload(result))
+        return 0
+    print(result["message"])
     return 0
 
 
@@ -1256,18 +1418,26 @@ def cmd_config_get(args) -> int:
 
 
 def _write_config_only(paths: Paths, config, reason: str) -> None:
-    write_transaction(
-        paths,
-        config_text=render_canonical_text(config),
-        rules_text=render_rules_text(_load_rules_or_empty(paths)),
-        source="cli",
-        reason=reason,
-    )
+    with control_file_lock(paths):
+        if paths.loha_conf.exists():
+            _config_text, rules_text = read_desired_texts(paths, assume_locked=True)
+        else:
+            rules_text = render_rules_text(load_rules(paths.rules_conf))
+        commit_desired_state(
+            paths,
+            config_text=render_canonical_text(config),
+            rules_text=rules_text,
+            source="cli",
+            reason=reason,
+            assume_locked=True,
+        )
 
 
 def _write_plain_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    temp_path = path.with_name(path.name + ".tmp")
+    temp_path.write_text(text, encoding="utf-8")
+    temp_path.replace(path)
 
 
 def _prompt_text_with_default(
@@ -1535,10 +1705,19 @@ def _validate_rules_after_edit(
     paths: Paths,
     runtime: Optional[RuntimeI18N] = None,
     adapter: Optional[SubprocessSystemAdapter] = None,
+    *,
+    rules_text: Optional[str] = None,
 ) -> str:
     adapter = adapter or SubprocessSystemAdapter()
     service = LoaderService(paths=paths, adapter=adapter)
-    return service.apply(mode="full", check_only=True, runtime=runtime)
+    if rules_text is None:
+        return service.apply(mode="full", check_only=True, runtime=runtime)
+    config_text, _rules_text = read_desired_texts(paths)
+    staged_snapshot = build_desired_snapshot_from_texts(
+        config_text,
+        rules_text,
+    )
+    return service.apply(mode="full", check_only=True, runtime=runtime, snapshot=staged_snapshot)
 
 
 def _edit_rules_conf(
@@ -1547,7 +1726,7 @@ def _edit_rules_conf(
     *,
     adapter: Optional[SubprocessSystemAdapter] = None,
     run_editor=subprocess.run,
-) -> int:
+    ) -> int:
     adapter = adapter or SubprocessSystemAdapter()
     try:
         editor = _resolve_editor_command()
@@ -1559,29 +1738,52 @@ def _edit_rules_conf(
             editor_name = message.split(":", 1)[1].strip()
             raise ApplyError(_t(runtime, "menu.edit.editor_missing", "Editor not found: {editor}", editor=editor_name))
         raise
-    paths.rules_conf.parent.mkdir(parents=True, exist_ok=True)
-    paths.rules_conf.touch(exist_ok=True)
-    launched = run_editor([editor, str(paths.rules_conf)], check=False)
-    if getattr(launched, "returncode", 0) != 0:
-        raise ApplyError(
-            _t(
-                runtime,
-                "menu.edit.launch_fail",
-                "Editor exited with status {code}: {editor}",
-                code=str(getattr(launched, "returncode", 1)),
-                editor=editor,
-            )
-        )
-    print(_t(runtime, "menu.edit.validating", "Validating edited rules.conf..."))
+    current_config_text = ""
+    current_rules_text = _read_path_text(paths.rules_conf)
+    if paths.loha_conf.exists():
+        current_config_text, current_rules_text = read_desired_texts(paths)
+    stage_dir = paths.txn_dir / f"raw-edit-{time.time_ns()}"
+    staged_rules = stage_dir / "rules.conf"
     try:
-        validation_message = _validate_rules_after_edit(paths, runtime, adapter)
-    except Exception:
-        print(_t(runtime, "menu.edit.fail", "rules.conf validation failed."))
-        raise
-    if validation_message:
-        print(validation_message)
-    print(_t(runtime, "menu.edit.pass", "rules.conf validation passed."))
-    return 0
+        stage_dir.mkdir(parents=True, exist_ok=True)
+        staged_rules.write_text(current_rules_text, encoding="utf-8")
+        launched = run_editor([editor, str(staged_rules)], check=False)
+        if getattr(launched, "returncode", 0) != 0:
+            raise ApplyError(
+                _t(
+                    runtime,
+                    "menu.edit.launch_fail",
+                    "Editor exited with status {code}: {editor}",
+                    code=str(getattr(launched, "returncode", 1)),
+                    editor=editor,
+                )
+            )
+        edited_rules_text = staged_rules.read_text(encoding="utf-8")
+        print(_t(runtime, "menu.edit.validating", "Validating edited rules.conf..."))
+        try:
+            validation_message = _validate_rules_after_edit(paths, runtime, adapter, rules_text=edited_rules_text)
+        except Exception:
+            print(_t(runtime, "menu.edit.fail", "rules.conf validation failed."))
+            raise
+        if validation_message:
+            print(validation_message)
+        if edited_rules_text != current_rules_text:
+            with control_file_lock(paths):
+                live_config_text = current_config_text
+                if paths.loha_conf.exists():
+                    live_config_text, _live_rules_text = read_desired_texts(paths, assume_locked=True)
+                commit_desired_state(
+                    paths,
+                    config_text=live_config_text if live_config_text else render_canonical_text(recommended_config()),
+                    rules_text=edited_rules_text,
+                    source="cli",
+                    reason="raw-rules-edit",
+                    assume_locked=True,
+                )
+        print(_t(runtime, "menu.edit.pass", "rules.conf validation passed."))
+        return 0
+    finally:
+        shutil.rmtree(stage_dir, ignore_errors=True)
 
 
 def _confirm_rules_conf_edit(
@@ -1907,11 +2109,23 @@ def _remove_if_exists(path: Path) -> None:
 
 
 def _sync_sysctl(adapter: SubprocessSystemAdapter) -> None:
-    if adapter.command_exists("sysctl"):
-        adapter.run(["sysctl", "--system"], check=False)
+    if not adapter.command_exists("sysctl"):
+        return "Missing 'sysctl' command"
+    result = adapter.run(["sysctl", "--system"], check=False)
+    if result.returncode != 0:
+        return result.stderr.strip() or result.stdout.strip() or "sysctl --system failed"
+    return ""
 
 
-def _apply_config_side_effects(paths: Paths, config, *, changed_keys, adapter: SubprocessSystemAdapter) -> None:
+def _apply_config_side_effects(
+    paths: Paths,
+    config,
+    *,
+    changed_keys,
+    adapter: SubprocessSystemAdapter,
+    desired_revision: int,
+    assume_locked: bool = False,
+) -> str:
     should_sync_sysctl = False
     if "RP_FILTER_MODE" in changed_keys:
         apply_rp_filter_files(
@@ -1928,8 +2142,31 @@ def _apply_config_side_effects(paths: Paths, config, *, changed_keys, adapter: S
             remove_path=_remove_if_exists,
         )
         should_sync_sysctl = True
+    sync_error = ""
     if should_sync_sysctl:
-        _sync_sysctl(adapter)
+        sync_error = _sync_sysctl(adapter)
+        had_sysctl_pending = "sysctl_sync" in read_runtime_state(paths).pending_actions
+        update_runtime_state(
+            paths,
+            lambda current: RuntimeStateSnapshot(
+                desired_revision=desired_revision or current.desired_revision,
+                applied_revision=current.applied_revision,
+                last_apply_mode=current.last_apply_mode,
+                last_apply_status=current.last_apply_status,
+                last_error=sync_error if sync_error else ("" if had_sysctl_pending else current.last_error),
+                pending_actions=tuple(
+                    action
+                    for action in (
+                        [item for item in current.pending_actions if item != "sysctl_sync"]
+                        + (["sysctl_sync"] if sync_error else [])
+                    )
+                    if action
+                ),
+                updated_at_epoch=int(time.time()),
+            ),
+            assume_locked=assume_locked,
+        )
+    return sync_error
 
 
 def _apply_config_update(
@@ -1941,15 +2178,32 @@ def _apply_config_update(
     include_plan: bool = False,
 ):
     adapter = adapter or SubprocessSystemAdapter()
-    result, changed_keys, _rules, transaction_artifacts, side_effect_artifacts, _actions, _artifacts = _plan_config_update(
-        paths,
-        updates,
-        adapter=adapter,
-    )
-    if _artifacts_would_change(transaction_artifacts):
-        _write_config_only(paths, result.config, reason)
-    if _artifacts_would_change(side_effect_artifacts):
-        _apply_config_side_effects(paths, result.config, changed_keys=changed_keys, adapter=adapter)
+    with control_file_lock(paths):
+        result, changed_keys, _rules, transaction_artifacts, side_effect_artifacts, _actions, _artifacts = _plan_config_update(
+            paths,
+            updates,
+            adapter=adapter,
+            assume_locked=True,
+        )
+        desired_revision = inspect_control_plane_status(paths, assume_locked=True).desired_revision
+        if _artifacts_would_change(transaction_artifacts):
+            desired_revision = commit_desired_state(
+                paths,
+                config_text=render_canonical_text(result.config),
+                rules_text=render_rules_text(_rules),
+                source="cli",
+                reason=reason,
+                assume_locked=True,
+            ).revision
+        if _artifacts_would_change(side_effect_artifacts):
+            _apply_config_side_effects(
+                paths,
+                result.config,
+                changed_keys=changed_keys,
+                adapter=adapter,
+                desired_revision=desired_revision,
+                assume_locked=True,
+            )
     if include_plan:
         return result, changed_keys, transaction_artifacts, side_effect_artifacts, _actions, _artifacts
     return result
@@ -2073,7 +2327,14 @@ def _print_rollback_rescue(runtime: Optional[RuntimeI18N], exc: HistoryError) ->
         )
 
 
-def _run_rollback(paths: Paths, selector: str, *, apply_after: bool, runtime: Optional[RuntimeI18N] = None) -> int:
+def _run_rollback(
+    paths: Paths,
+    selector: str,
+    *,
+    apply_after: bool,
+    runtime: Optional[RuntimeI18N] = None,
+    json_enabled: bool = False,
+) -> int:
     runtime = runtime or _runtime_i18n(paths)
     try:
         outcome = rollback_snapshot(
@@ -2082,9 +2343,14 @@ def _run_rollback(paths: Paths, selector: str, *, apply_after: bool, runtime: Op
             apply_callback=(lambda: _service_reload(paths, full=False, runtime=runtime)) if apply_after else None,
         )
     except HistoryError as exc:
+        if json_enabled:
+            raise
         print(str(exc))
         _print_rollback_rescue(runtime, exc)
         return _exit_code_for_exception(exc)
+    if json_enabled:
+        _emit_json(_json_rollback_payload(paths, selector=selector, outcome=outcome, apply_message=outcome.apply_message))
+        return 0
     if outcome.restored_from == "rollback_checkpoint":
         print(_t(runtime, "history.rollback.checkpoint_restored", "The rollback checkpoint has been restored."))
     elif selector == "latest":
@@ -2328,6 +2594,9 @@ def cmd_config_history(args) -> int:
     paths = _paths_from_args(args)
     runtime = _runtime_i18n(paths)
     if args.subcommand == "status":
+        if getattr(args, "json", False):
+            _emit_json(_json_history_status_payload(paths))
+            return 0
         print(_t(runtime, "history.command.status", "Automatic snapshots: {status}", status=_history_status_text(paths, runtime)))
         return 0
     if args.subcommand == "enable":
@@ -2338,13 +2607,22 @@ def cmd_config_history(args) -> int:
         _apply_config_update(paths, {"ENABLE_CONFIG_HISTORY": "off"}, "config-history-disable")
         print(_t(runtime, "history.command.disabled", "Automatic configuration snapshots have been disabled."))
         return 0
+    if getattr(args, "json", False):
+        _emit_json(_json_history_show_payload(paths))
+        return 0
     _print_history_listing(paths, runtime)
     return 0
 
 
 def cmd_config_rollback(args) -> int:
     paths = _paths_from_args(args)
-    return _run_rollback(paths, args.selector, apply_after=args.apply, runtime=_runtime_i18n(paths))
+    return _run_rollback(
+        paths,
+        args.selector,
+        apply_after=args.apply,
+        runtime=_runtime_i18n(paths),
+        json_enabled=getattr(args, "json", False),
+    )
 
 
 def cmd_config_wizard(args) -> int:
@@ -3251,6 +3529,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     reload_command = subparsers.add_parser("reload")
     reload_command.add_argument("--full", action="store_true")
+    reload_command.add_argument("--json", action="store_true")
     reload_command.set_defaults(func=cmd_reload)
 
     rules = subparsers.add_parser("rules")
@@ -3282,9 +3561,11 @@ def build_parser() -> argparse.ArgumentParser:
     config_normalize.add_argument("--json", action="store_true")
     config_normalize.set_defaults(func=cmd_config_normalize)
     config_history = config_sub.add_parser("history")
+    config_history.add_argument("--json", action="store_true")
     config_history.add_argument("subcommand", nargs="?", default="show", choices=["show", "enable", "disable", "status"])
     config_history.set_defaults(func=cmd_config_history)
     config_rollback = config_sub.add_parser("rollback")
+    config_rollback.add_argument("--json", action="store_true")
     config_rollback.add_argument("selector", nargs="?", default="latest")
     config_rollback.add_argument("--apply", action="store_true")
     config_rollback.set_defaults(func=cmd_config_rollback)

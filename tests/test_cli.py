@@ -176,6 +176,36 @@ class CliTests(unittest.TestCase):
             )
         self.assertEqual("自动快照：已启用", out.getvalue().strip())
 
+    def test_config_history_status_supports_json_output(self):
+        paths = self._paths()
+        self._write_config(paths, history_mode="on")
+        write_transaction(
+            paths,
+            config_text=paths.loha_conf.read_text(encoding="utf-8"),
+            rules_text="ALIAS\tVM_WEB\t192.168.10.20\n",
+            source="cli",
+            reason="alias-add",
+        )
+        out = io.StringIO()
+        with redirect_stdout(out):
+            exit_code = cmd_config_history(
+                Namespace(
+                    subcommand="status",
+                    json=True,
+                    etc_dir=str(paths.etc_dir),
+                    prefix=str(paths.prefix),
+                    run_dir=str(paths.run_dir),
+                    systemd_dir=str(paths.systemd_unit_dir),
+                )
+            )
+        payload = json.loads(out.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual("history_status", payload["result"]["category"])
+        self.assertTrue(payload["enabled"])
+        self.assertEqual(1, payload["current_revision"])
+        self.assertEqual(1, payload["snapshot_count"])
+        self.assertFalse(payload["has_rollback_checkpoint"])
+
     def test_config_history_show_prints_detailed_snapshot_fields(self):
         paths = self._paths()
         self._write_config(paths, history_mode="on")
@@ -203,6 +233,41 @@ class CliTests(unittest.TestCase):
         self.assertIn("Reason: alias-add", rendered)
         self.assertIn("Config hash:", rendered)
         self.assertIn("Rules hash:", rendered)
+
+    def test_config_history_show_supports_json_output(self):
+        paths = self._paths()
+        self._write_config(paths, history_mode="on")
+        write_transaction(
+            paths,
+            config_text=paths.loha_conf.read_text(encoding="utf-8"),
+            rules_text="ALIAS\tVM_WEB\t192.168.10.20\n",
+            source="cli",
+            reason="alias-add",
+        )
+        out = io.StringIO()
+        with redirect_stdout(out):
+            exit_code = cmd_config_history(
+                Namespace(
+                    subcommand="show",
+                    json=True,
+                    etc_dir=str(paths.etc_dir),
+                    prefix=str(paths.prefix),
+                    run_dir=str(paths.run_dir),
+                    systemd_dir=str(paths.systemd_unit_dir),
+                )
+            )
+        payload = json.loads(out.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual("history_show", payload["result"]["category"])
+        self.assertEqual(1, payload["current_revision"])
+        self.assertEqual(1, len(payload["snapshots"]))
+        snapshot = payload["snapshots"][0]
+        self.assertEqual(1, snapshot["index"])
+        self.assertEqual("cli", snapshot["source"])
+        self.assertEqual("alias-add", snapshot["reason"])
+        self.assertIn("config_hash", snapshot)
+        self.assertIn("rules_hash", snapshot)
+        self.assertIsNone(payload["rollback_checkpoint"])
 
     def test_config_history_show_prints_rollback_checkpoint_separately(self):
         paths = self._paths()
@@ -1239,6 +1304,12 @@ class CliTests(unittest.TestCase):
         self.assertTrue(args.json)
         args = parser.parse_args(["rules", "render", "--json"])
         self.assertTrue(args.json)
+        args = parser.parse_args(["reload", "--json"])
+        self.assertTrue(args.json)
+        args = parser.parse_args(["config", "history", "status", "--json"])
+        self.assertTrue(args.json)
+        args = parser.parse_args(["config", "rollback", "latest", "--json"])
+        self.assertTrue(args.json)
 
     def test_build_parser_rejects_removed_legacy_commands(self):
         parser = build_parser()
@@ -1447,6 +1518,46 @@ class CliTests(unittest.TestCase):
         self.assertIn("The latest configuration snapshot has been restored.", rendered)
         self.assertIn("Rules have been applied to kernel and service state synced.", rendered)
 
+    def test_config_rollback_supports_json_output(self):
+        paths = self._paths()
+        self._write_config(paths, history_mode="on")
+        write_transaction(
+            paths,
+            config_text=paths.loha_conf.read_text(encoding="utf-8"),
+            rules_text="ALIAS\tVM_WEB\t192.168.10.20\n",
+            source="cli",
+            reason="alias-add",
+        )
+        write_transaction(
+            paths,
+            config_text=paths.loha_conf.read_text(encoding="utf-8"),
+            rules_text="ALIAS\tVM_WEB\t192.168.10.20\nALIAS\tVM_API\t192.0.2.20\n",
+            source="cli",
+            reason="alias-add",
+        )
+        out = io.StringIO()
+        with redirect_stdout(out):
+            exit_code = cmd_config_rollback(
+                Namespace(
+                    selector="latest",
+                    apply=False,
+                    json=True,
+                    etc_dir=str(paths.etc_dir),
+                    prefix=str(paths.prefix),
+                    run_dir=str(paths.run_dir),
+                    systemd_dir=str(paths.systemd_unit_dir),
+                )
+            )
+        payload = json.loads(out.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual("rollback", payload["result"]["category"])
+        self.assertEqual("latest", payload["selector"])
+        self.assertEqual("snapshot", payload["restored_from"])
+        self.assertEqual(3, payload["desired_revision"])
+        self.assertEqual(0, payload["applied_revision"])
+        self.assertFalse(payload["runtime_synced"])
+        self.assertIn("reload", payload["pending_actions"])
+
     def test_reload_uses_runtime_locale_and_systemctl_reload_path(self):
         paths = self._paths()
         self._write_config(paths, history_mode="on", locale="zh_CN")
@@ -1486,6 +1597,42 @@ class CliTests(unittest.TestCase):
         self.assertEqual([], adapter.run_calls)
         self.assertEqual([("restart", "loha.service")], adapter.systemctl_calls)
         self.assertIn("Full ruleset initialized successfully", out.getvalue())
+
+    def test_reload_supports_json_output(self):
+        paths = self._paths()
+        out = io.StringIO()
+        with patch(
+            "loha.cli._service_reload_result",
+            return_value={
+                "message": "Rules have been applied to kernel and service state synced.",
+                "requested_mode": "reload",
+                "effective_mode": "reload",
+                "desired_revision": 7,
+                "applied_revision": 7,
+                "runtime_synced": True,
+                "pending_actions": [],
+            },
+        ):
+            with redirect_stdout(out):
+                exit_code = cmd_reload(
+                    Namespace(
+                        full=False,
+                        json=True,
+                        etc_dir=str(paths.etc_dir),
+                        prefix=str(paths.prefix),
+                        run_dir=str(paths.run_dir),
+                        systemd_dir=str(paths.systemd_unit_dir),
+                    )
+                )
+        payload = json.loads(out.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual("reload", payload["result"]["category"])
+        self.assertEqual("reload", payload["requested_mode"])
+        self.assertEqual("reload", payload["effective_mode"])
+        self.assertEqual(7, payload["desired_revision"])
+        self.assertEqual(7, payload["applied_revision"])
+        self.assertTrue(payload["runtime_synced"])
+        self.assertEqual([], payload["pending_actions"])
 
     def test_config_rollback_prints_rescue_dir_when_recovery_fails(self):
         paths = self._paths()

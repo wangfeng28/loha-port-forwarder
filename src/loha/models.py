@@ -27,6 +27,18 @@ class Paths:
         return self.history_dir / "_rollback_checkpoint"
 
     @property
+    def state_file(self) -> Path:
+        return self.etc_dir / "state.json"
+
+    @property
+    def txn_dir(self) -> Path:
+        return self.etc_dir / "txn"
+
+    @property
+    def pending_txn_file(self) -> Path:
+        return self.txn_dir / "pending.json"
+
+    @property
     def forwarding_sysctl(self) -> Path:
         return Path("/etc/sysctl.d/90-loha-forwarding.conf")
 
@@ -69,6 +81,14 @@ class Paths:
     @property
     def debug_ruleset_file(self) -> Path:
         return self.run_dir / "loha_debug.nft"
+
+    @property
+    def control_lock_dir(self) -> Path:
+        return self.run_dir / "control.lock.d"
+
+    @property
+    def runtime_state_file(self) -> Path:
+        return self.run_dir / "runtime_state.json"
 
 
 @dataclass(frozen=True)
@@ -254,6 +274,55 @@ class RollbackOutcome:
     apply_message: str = ""
     rescue_dir: Optional[Path] = None
     restored_from: str = "snapshot"
+
+
+@dataclass(frozen=True)
+class ControlStateManifest:
+    revision: int
+    config_hash: str
+    rules_hash: str
+    updated_at_epoch: int
+    source: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class DesiredStateSnapshot:
+    config: CanonicalConfig
+    rules: RulesFile
+    config_text: str
+    rules_text: str
+    revision: int = 0
+    source: str = ""
+    reason: str = ""
+    manifest_present: bool = False
+    state_mismatch: bool = False
+    pending_txn_present: bool = False
+
+
+@dataclass(frozen=True)
+class RuntimeStateSnapshot:
+    desired_revision: int = 0
+    applied_revision: int = 0
+    last_apply_mode: str = ""
+    last_apply_status: str = "unknown"
+    last_error: str = ""
+    pending_actions: Tuple[str, ...] = ()
+    updated_at_epoch: int = 0
+
+
+@dataclass(frozen=True)
+class ControlPlaneStatus:
+    desired_revision: int = 0
+    applied_revision: int = 0
+    runtime_synced: bool = True
+    pending_actions: Tuple[str, ...] = ()
+    last_apply_mode: str = ""
+    last_apply_status: str = "unknown"
+    last_error: str = ""
+    manifest_present: bool = False
+    pending_txn_present: bool = False
+    state_mismatch: bool = False
 
 
 @dataclass(frozen=True)

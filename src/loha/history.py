@@ -229,9 +229,15 @@ def write_transaction(
     source: str,
     reason: str,
 ) -> None:
-    capture_snapshot_if_enabled(paths, source=source, reason=reason)
-    write_state_files(paths, config_text=config_text, rules_text=rules_text)
-    clear_rollback_checkpoint(paths)
+    from .control_tx import commit_desired_state
+
+    commit_desired_state(
+        paths,
+        config_text=config_text,
+        rules_text=rules_text,
+        source=source,
+        reason=reason,
+    )
 
 
 def _snapshot_file(entry: HistoryEntry, name: str) -> Path:
@@ -244,6 +250,8 @@ def rollback_snapshot(
     *,
     apply_callback: Optional[Callable[[], str]] = None,
 ) -> RollbackOutcome:
+    from .control_tx import commit_desired_state, control_file_lock
+
     snapshots = list_snapshots(paths)
     checkpoint = load_rollback_checkpoint(paths)
     if selector == "latest":
@@ -268,30 +276,52 @@ def rollback_snapshot(
     preserve_backup = False
     apply_message = ""
     try:
-        if paths.loha_conf.exists():
-            shutil.copy2(paths.loha_conf, backup_dir / "loha.conf")
-        if paths.rules_conf.exists():
-            shutil.copy2(paths.rules_conf, backup_dir / "rules.conf")
+        with control_file_lock(paths):
+            if paths.loha_conf.exists():
+                shutil.copy2(paths.loha_conf, backup_dir / "loha.conf")
+            if paths.rules_conf.exists():
+                shutil.copy2(paths.rules_conf, backup_dir / "rules.conf")
 
-        snapshot_conf = _snapshot_file(target, "loha.conf")
-        snapshot_rules = _snapshot_file(target, "rules.conf")
-        if snapshot_conf.exists():
-            shutil.copy2(snapshot_conf, paths.loha_conf)
-        elif paths.loha_conf.exists():
-            paths.loha_conf.unlink()
-        if snapshot_rules.exists():
-            shutil.copy2(snapshot_rules, paths.rules_conf)
-        elif paths.rules_conf.exists():
-            paths.rules_conf.unlink()
+            snapshot_conf = _snapshot_file(target, "loha.conf")
+            snapshot_rules = _snapshot_file(target, "rules.conf")
+            if not snapshot_conf.exists():
+                raise HistoryError("rollback snapshot is missing loha.conf")
+            rollback_config_text = snapshot_conf.read_text(encoding="utf-8")
+            rollback_rules_text = snapshot_rules.read_text(encoding="utf-8") if snapshot_rules.exists() else ""
+            commit_desired_state(
+                paths,
+                config_text=rollback_config_text,
+                rules_text=rollback_rules_text,
+                source="rollback",
+                reason=f"rollback-{selector}",
+                clear_rollback_checkpoint_after_write=False,
+                assume_locked=True,
+            )
+            _write_rollback_checkpoint(
+                paths,
+                conf_path=backup_dir / "loha.conf",
+                rules_path=backup_dir / "rules.conf",
+            )
 
         if apply_callback is not None:
             try:
                 apply_message = apply_callback() or ""
             except Exception as exc:
-                if (backup_dir / "loha.conf").exists():
-                    shutil.copy2(backup_dir / "loha.conf", paths.loha_conf)
-                if (backup_dir / "rules.conf").exists():
-                    shutil.copy2(backup_dir / "rules.conf", paths.rules_conf)
+                with control_file_lock(paths):
+                    if not (backup_dir / "loha.conf").exists():
+                        raise HistoryError("rollback recovery failed; previous loha.conf is unavailable") from exc
+                    commit_desired_state(
+                        paths,
+                        config_text=(backup_dir / "loha.conf").read_text(encoding="utf-8"),
+                        rules_text=(backup_dir / "rules.conf").read_text(encoding="utf-8")
+                        if (backup_dir / "rules.conf").exists()
+                        else "",
+                        source="rollback",
+                        reason="rollback-recovery",
+                        clear_rollback_checkpoint_after_write=False,
+                        assume_locked=True,
+                    )
+                    clear_rollback_checkpoint(paths)
                 try:
                     apply_callback()
                 except Exception:
@@ -301,11 +331,6 @@ def rollback_snapshot(
                         rescue_dir=backup_dir,
                     ) from exc
                 raise HistoryError("rollback apply failed; previous files were restored", recovered=True) from exc
-        _write_rollback_checkpoint(
-            paths,
-            conf_path=backup_dir / "loha.conf",
-            rules_path=backup_dir / "rules.conf",
-        )
     finally:
         if backup_dir.exists() and not preserve_backup:
             shutil.rmtree(backup_dir, ignore_errors=True)
