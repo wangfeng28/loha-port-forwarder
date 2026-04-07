@@ -959,6 +959,14 @@ def _remove_uninstall_data(
     try:
         if remove_config_data:
             _remove_path(paths.etc_dir, dry_run=dry_run, i18n=i18n)
+        elif _path_exists(paths.etc_dir):
+            preserved_names = {"loha.conf", "rules.conf", "history"}
+            for child in tuple(paths.etc_dir.iterdir()):
+                if child.name in preserved_names:
+                    continue
+                _remove_path(child, dry_run=dry_run, i18n=i18n)
+            if not dry_run and not any(paths.etc_dir.iterdir()):
+                _remove_path(paths.etc_dir, dry_run=False, i18n=i18n)
         if remove_system_tuning:
             for target in (paths.forwarding_sysctl, paths.conntrack_sysctl, paths.conntrack_modprobe):
                 _remove_path(target, dry_run=dry_run, i18n=i18n)
@@ -1183,43 +1191,62 @@ def cmd_uninstall(args) -> int:
     )
     i18n = _build_install_i18n(paths, non_interactive=True)
     adapter = SubprocessSystemAdapter()
-    force_yes = bool(getattr(args, "yes", False) or getattr(args, "non_interactive", False))
-    if not force_yes:
-        if not _confirm_yes_no(
-            _t(i18n, "install.uninstall.prompt", "Remove installed LOHA files? [y/N]: "),
-            input_func=input,
-            default=False,
-            i18n=i18n,
-        ):
-            print(_t(i18n, "common.cancelled", "Cancelled."))
-            return 1
-    remove_config_data = force_yes
-    remove_system_tuning = force_yes
-    if not force_yes:
-        remove_config_data = _confirm_yes_no(
-            _t(
-                i18n,
-                "install.uninstall.data_prompt",
-                "Delete all user configuration data ({path})? [y/N]: ",
-                path=paths.etc_dir,
-            ),
-            input_func=input,
-            default=False,
-            i18n=i18n,
-        )
-        remove_system_tuning = _confirm_yes_no(
-            _t(
-                i18n,
-                "install.uninstall.system_tuning_prompt",
-                "Remove kernel network tuning parameters ({nat}, {conntrack}, {modprobe})? [y/N]: ",
-                nat=paths.forwarding_sysctl,
-                conntrack=paths.conntrack_sysctl,
-                modprobe=paths.conntrack_modprobe,
-            ),
-            input_func=input,
-            default=False,
-            i18n=i18n,
-        )
+    non_interactive = bool(getattr(args, "non_interactive", False))
+    purge = bool(getattr(args, "purge", False))
+    remove_config_data = purge
+    remove_system_tuning = purge
+    if purge:
+        if not non_interactive:
+            if not _confirm_yes_no(
+                _t(
+                    i18n,
+                    "install.uninstall.purge_prompt",
+                    "Permanently delete all LOHA files, including {path}, history snapshots, and kernel tuning files ({nat}, {conntrack}, {modprobe})? [y/N]: ",
+                    path=paths.etc_dir,
+                    nat=paths.forwarding_sysctl,
+                    conntrack=paths.conntrack_sysctl,
+                    modprobe=paths.conntrack_modprobe,
+                ),
+                input_func=input,
+                default=False,
+                i18n=i18n,
+            ):
+                print(_t(i18n, "common.cancelled", "Cancelled."))
+                return 1
+    else:
+        if not non_interactive:
+            if not _confirm_yes_no(
+                _t(i18n, "install.uninstall.prompt", "Uninstall LOHA from this system? [y/N]: "),
+                input_func=input,
+                default=False,
+                i18n=i18n,
+            ):
+                print(_t(i18n, "common.cancelled", "Cancelled."))
+                return 1
+            remove_config_data = _confirm_yes_no(
+                _t(
+                    i18n,
+                    "install.uninstall.data_prompt",
+                    "Delete all user configuration data ({path})? [y/N]: ",
+                    path=paths.etc_dir,
+                ),
+                input_func=input,
+                default=False,
+                i18n=i18n,
+            )
+            remove_system_tuning = _confirm_yes_no(
+                _t(
+                    i18n,
+                    "install.uninstall.system_tuning_prompt",
+                    "Remove kernel network tuning parameters ({nat}, {conntrack}, {modprobe})? [y/N]: ",
+                    nat=paths.forwarding_sysctl,
+                    conntrack=paths.conntrack_sysctl,
+                    modprobe=paths.conntrack_modprobe,
+                ),
+                input_func=input,
+                default=False,
+                i18n=i18n,
+            )
     with control_file_lock(paths):
         _update_install_runtime_sync_state(
             paths,
@@ -1273,7 +1300,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-y", "--non-interactive", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--uninstall", action="store_true")
-    parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--purge", action="store_true")
     return parser
 
 

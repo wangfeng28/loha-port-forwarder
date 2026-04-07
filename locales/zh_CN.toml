@@ -113,7 +113,8 @@ action_failed = "安装阶段执行 `{command}` 失败：{error}"
 write_failed = "写入安装快照失败：{error}"
 
 [messages.install.uninstall]
-prompt = "是否删除已安装的 LOHA 文件？[y/N]: "
+prompt = "是否卸载 LOHA？[y/N]: "
+purge_prompt = "是否彻底删除所有 LOHA 文件，包括 {path}、历史快照以及内核调优文件（{nat}、{conntrack}、{modprobe}）？[y/N]: "
 data_prompt = "是否删除所有用户配置数据（{path}）？[y/N]: "
 system_tuning_prompt = "是否删除内核网络调优参数（{nat}、{conntrack}、{modprobe}）？[y/N]: "
 completed = "LOHA 已从系统中移除。"

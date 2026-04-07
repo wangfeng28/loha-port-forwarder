@@ -113,7 +113,8 @@ action_failed = "Install service activation failed during `{command}`: {error}"
 write_failed = "Install snapshot write failed: {error}"
 
 [messages.install.uninstall]
-prompt = "Remove installed LOHA files? [y/N]: "
+prompt = "Uninstall LOHA from this system? [y/N]: "
+purge_prompt = "Permanently delete all LOHA files, including {path}, history snapshots, and kernel tuning files ({nat}, {conntrack}, {modprobe})? [y/N]: "
 data_prompt = "Delete all user configuration data ({path})? [y/N]: "
 system_tuning_prompt = "Remove kernel network tuning parameters ({nat}, {conntrack}, {modprobe})? [y/N]: "
 completed = "LOHA has been removed from the system."

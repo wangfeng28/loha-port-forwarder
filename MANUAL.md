@@ -422,10 +422,22 @@ Uninstall:
 sudo ./uninstall.sh
 ```
 
-Skip uninstall confirmation:
+Run a safe non-interactive uninstall. This removes the installed LOHA payload but keeps `loha.conf`, `rules.conf`, `history/`, and system tuning files by default:
 
 ```bash
-sudo ./uninstall.sh --yes
+sudo ./uninstall.sh -y
+```
+
+Permanently delete all LOHA-managed files, including configuration, history snapshots, and kernel tuning files:
+
+```bash
+sudo ./uninstall.sh --purge
+```
+
+Run a non-interactive full purge:
+
+```bash
+sudo ./uninstall.sh -y --purge
 ```
 
 Recommended upgrade path:

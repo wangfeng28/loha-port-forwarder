@@ -2,7 +2,7 @@ import io
 import subprocess
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -26,6 +26,7 @@ from loha.install import (
     _select_install_import_path,
     _service_unit,
     _sync_uninstall_runtime,
+    build_parser,
     cmd_install,
     cmd_uninstall,
     detect_upstream_firewall_target,
@@ -575,6 +576,48 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(paths.conntrack_sysctl.exists())
         self.assertFalse(paths.conntrack_modprobe.exists())
 
+    def test_remove_uninstall_data_can_preserve_core_config_and_history(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        etc_dir = temp_dir / "etc"
+        loha_conf = etc_dir / "loha.conf"
+        rules_conf = etc_dir / "rules.conf"
+        history_dir = etc_dir / "history"
+        state_file = etc_dir / "state.json"
+        txn_dir = etc_dir / "txn"
+        scratch_file = etc_dir / "cache.tmp"
+        paths = SimpleNamespace(
+            etc_dir=etc_dir,
+            loha_conf=loha_conf,
+            rules_conf=rules_conf,
+            history_dir=history_dir,
+            forwarding_sysctl=temp_dir / "90-loha-forwarding.conf",
+            conntrack_sysctl=temp_dir / "90-loha-conntrack.conf",
+            conntrack_modprobe=temp_dir / "loha-conntrack.conf",
+        )
+        history_dir.mkdir(parents=True, exist_ok=True)
+        txn_dir.mkdir(parents=True, exist_ok=True)
+        loha_conf.write_text("conf", encoding="utf-8")
+        rules_conf.write_text("rules", encoding="utf-8")
+        (history_dir / "snapshot-1").mkdir(parents=True, exist_ok=True)
+        (history_dir / "snapshot-1" / "loha.conf").write_text("snapshot", encoding="utf-8")
+        state_file.write_text("state", encoding="utf-8")
+        (txn_dir / "pending.json").write_text("{}", encoding="utf-8")
+        scratch_file.write_text("cache", encoding="utf-8")
+        result = _remove_uninstall_data(
+            paths,
+            remove_config_data=False,
+            remove_system_tuning=False,
+            dry_run=False,
+            i18n=self.runtime,
+        )
+        self.assertTrue(result.ok)
+        self.assertTrue(loha_conf.exists())
+        self.assertTrue(rules_conf.exists())
+        self.assertTrue(history_dir.exists())
+        self.assertFalse(state_file.exists())
+        self.assertFalse(txn_dir.exists())
+        self.assertFalse(scratch_file.exists())
+
     def test_sync_uninstall_runtime_runs_best_effort_cleanup_sequence(self):
         adapter = UninstallAdapter()
         paths = SimpleNamespace(service_unit=Path("/tmp/loha.service"))
@@ -644,20 +687,39 @@ class InstallTests(unittest.TestCase):
                     run_dir=str(temp_dir / "run"),
                     systemd_dir=str(temp_dir / "systemd"),
                     uninstall=True,
-                    yes=False,
+                    purge=False,
                 )
             )
         self.assertEqual(1, exit_code)
-        self.assertEqual("是否删除已安装的 LOHA 文件？[y/N]: ", prompts[0])
+        self.assertEqual("是否卸载 LOHA？[y/N]: ", prompts[0])
         self.assertIn("已取消。", output.getvalue())
 
-    def test_uninstall_yes_removes_all_and_prints_completion(self):
+    def test_uninstall_default_no_for_delete_prompts_keeps_config_and_completes(self):
         temp_dir = Path(tempfile.mkdtemp())
         etc_dir = temp_dir / "etc"
         etc_dir.mkdir(parents=True, exist_ok=True)
-        (etc_dir / "loha.conf").write_text('LOCALE="en_US"\n', encoding="utf-8")
+        config = normalize_mapping(
+            {
+                "EXTERNAL_IFS": "eth0",
+                "PRIMARY_EXTERNAL_IF": "eth0",
+                "LISTEN_IPS": "203.0.113.10",
+                "DEFAULT_SNAT_IP": "203.0.113.10",
+                "LAN_IFS": "eth1",
+                "LAN_NETS": "192.168.10.0/24",
+                "PROTECTION_MODE": "backends",
+                "LOCALE": "zh_CN",
+            }
+        )
+        (etc_dir / "loha.conf").write_text(render_canonical_text(config), encoding="utf-8")
         output = io.StringIO()
-        with patch(
+        prompts = []
+        answers = iter(("y", "", ""))
+
+        def fake_input(prompt: str) -> str:
+            prompts.append(prompt)
+            return next(answers)
+
+        with patch("builtins.input", side_effect=fake_input), patch(
             "loha.install._remove_installation_payload",
             return_value=InstallStepResult(ok=True),
         ) as payload_mock, patch(
@@ -673,10 +735,67 @@ class InstallTests(unittest.TestCase):
                     run_dir=str(temp_dir / "run"),
                     systemd_dir=str(temp_dir / "systemd"),
                     uninstall=True,
-                    yes=True,
+                    purge=False,
                 )
             )
         self.assertEqual(0, exit_code)
+        self.assertEqual(
+            [
+                "是否卸载 LOHA？[y/N]: ",
+                f"是否删除所有用户配置数据（{etc_dir}）？[y/N]: ",
+                f"是否删除内核网络调优参数（/etc/sysctl.d/90-loha-forwarding.conf、/etc/sysctl.d/90-loha-conntrack.conf、/etc/modprobe.d/loha-conntrack.conf）？[y/N]: ",
+            ],
+            prompts,
+        )
+        payload_mock.assert_called_once()
+        data_mock.assert_called_once()
+        _, kwargs = data_mock.call_args
+        self.assertFalse(kwargs["remove_config_data"])
+        self.assertFalse(kwargs["remove_system_tuning"])
+        sync_mock.assert_called_once()
+        self.assertIn("LOHA 已从系统中移除。", output.getvalue())
+
+    def test_uninstall_purge_uses_single_confirmation_and_removes_all(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        etc_dir = temp_dir / "etc"
+        etc_dir.mkdir(parents=True, exist_ok=True)
+        (etc_dir / "loha.conf").write_text('LOCALE="en_US"\n', encoding="utf-8")
+        output = io.StringIO()
+        prompts = []
+
+        def fake_input(prompt: str) -> str:
+            prompts.append(prompt)
+            return "y"
+
+        with patch(
+            "builtins.input",
+            side_effect=fake_input,
+        ), patch(
+            "loha.install._remove_installation_payload",
+            return_value=InstallStepResult(ok=True),
+        ) as payload_mock, patch(
+            "loha.install._remove_uninstall_data",
+            return_value=InstallStepResult(ok=True),
+        ) as data_mock, patch(
+            "loha.install._sync_uninstall_runtime",
+        ) as sync_mock, redirect_stdout(output):
+            exit_code = cmd_uninstall(
+                SimpleNamespace(
+                    etc_dir=str(etc_dir),
+                    prefix=str(temp_dir / "prefix"),
+                    run_dir=str(temp_dir / "run"),
+                    systemd_dir=str(temp_dir / "systemd"),
+                    uninstall=True,
+                    purge=True,
+                )
+            )
+        self.assertEqual(0, exit_code)
+        self.assertEqual(
+            [
+                f"Permanently delete all LOHA files, including {etc_dir}, history snapshots, and kernel tuning files (/etc/sysctl.d/90-loha-forwarding.conf, /etc/sysctl.d/90-loha-conntrack.conf, /etc/modprobe.d/loha-conntrack.conf)? [y/N]: ",
+            ],
+            prompts,
+        )
         payload_mock.assert_called_once()
         data_mock.assert_called_once()
         _, kwargs = data_mock.call_args
@@ -685,7 +804,7 @@ class InstallTests(unittest.TestCase):
         sync_mock.assert_called_once()
         self.assertIn("LOHA has been removed from the system.", output.getvalue())
 
-    def test_uninstall_non_interactive_alias_removes_all_without_prompts(self):
+    def test_uninstall_non_interactive_keeps_config_without_prompts(self):
         temp_dir = Path(tempfile.mkdtemp())
         etc_dir = temp_dir / "etc"
         etc_dir.mkdir(parents=True, exist_ok=True)
@@ -707,7 +826,43 @@ class InstallTests(unittest.TestCase):
                     run_dir=str(temp_dir / "run"),
                     systemd_dir=str(temp_dir / "systemd"),
                     uninstall=True,
-                    yes=False,
+                    purge=False,
+                    non_interactive=True,
+                )
+            )
+        self.assertEqual(0, exit_code)
+        input_mock.assert_not_called()
+        payload_mock.assert_called_once()
+        data_mock.assert_called_once()
+        _, kwargs = data_mock.call_args
+        self.assertFalse(kwargs["remove_config_data"])
+        self.assertFalse(kwargs["remove_system_tuning"])
+        sync_mock.assert_called_once()
+        self.assertIn("LOHA has been removed from the system.", output.getvalue())
+
+    def test_uninstall_non_interactive_purge_removes_all_without_prompts(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        etc_dir = temp_dir / "etc"
+        etc_dir.mkdir(parents=True, exist_ok=True)
+        (etc_dir / "loha.conf").write_text('LOCALE="en_US"\n', encoding="utf-8")
+        output = io.StringIO()
+        with patch("builtins.input") as input_mock, patch(
+            "loha.install._remove_installation_payload",
+            return_value=InstallStepResult(ok=True),
+        ) as payload_mock, patch(
+            "loha.install._remove_uninstall_data",
+            return_value=InstallStepResult(ok=True),
+        ) as data_mock, patch(
+            "loha.install._sync_uninstall_runtime",
+        ) as sync_mock, redirect_stdout(output):
+            exit_code = cmd_uninstall(
+                SimpleNamespace(
+                    etc_dir=str(etc_dir),
+                    prefix=str(temp_dir / "prefix"),
+                    run_dir=str(temp_dir / "run"),
+                    systemd_dir=str(temp_dir / "systemd"),
+                    uninstall=True,
+                    purge=True,
                     non_interactive=True,
                 )
             )
@@ -736,7 +891,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
         output = io.StringIO()
         with patch("loha.install.SubprocessSystemAdapter", return_value=adapter), patch(
@@ -785,7 +940,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
         activation_observed = {}
 
@@ -837,7 +992,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
         output = io.StringIO()
         with patch("loha.install.SubprocessSystemAdapter", return_value=adapter), patch(
@@ -910,7 +1065,7 @@ class InstallTests(unittest.TestCase):
                     run_dir=str(run_dir),
                     systemd_dir=str(systemd_dir),
                     non_interactive=True,
-                    yes=True,
+                    purge=True,
                 )
             )
         self.assertEqual(0, exit_code)
@@ -928,7 +1083,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
 
         def fake_apply(_paths, _config, adapter, *, dry_run: bool, i18n=None):
@@ -984,7 +1139,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
 
         def fake_apply(_paths, _config, adapter, *, dry_run: bool, i18n=None):
@@ -1035,7 +1190,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
 
         def fake_apply(_paths, _config, adapter, *, dry_run: bool, i18n=None):
@@ -1094,7 +1249,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
 
         def fake_apply(_paths, _config, adapter, *, dry_run: bool, i18n=None):
@@ -1183,7 +1338,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
         output = io.StringIO()
         with patch("loha.install.SubprocessSystemAdapter", return_value=adapter), patch(
@@ -1234,7 +1389,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=False,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
         output = io.StringIO()
         with patch(
@@ -1283,7 +1438,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
         with patch("loha.install._build_install_i18n", return_value=self.runtime), patch(
             "loha.install._run_interactive_prechecks", return_value=True
@@ -1320,7 +1475,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
         with patch("loha.install._build_install_i18n", return_value=self.runtime), patch(
             "loha.install._run_interactive_prechecks", return_value=True
@@ -1367,7 +1522,7 @@ class InstallTests(unittest.TestCase):
             non_interactive=True,
             dry_run=False,
             uninstall=False,
-            yes=False,
+            purge=False,
         )
         with patch("loha.install._build_install_i18n", return_value=self.runtime), patch(
             "loha.install._run_interactive_prechecks", return_value=True
@@ -1387,6 +1542,11 @@ class InstallTests(unittest.TestCase):
             exit_code = cmd_install(args)
         self.assertEqual(0, exit_code)
         self.assertEqual([], list_snapshots(SimpleNamespace(history_dir=etc_dir / "history")))
+
+    def test_build_parser_rejects_removed_yes_flag(self):
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                build_parser().parse_args(["--yes"])
 
     def test_install_main_catches_apply_error_using_runtime_locale(self):
         temp_dir = Path(tempfile.mkdtemp())

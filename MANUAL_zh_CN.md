@@ -423,10 +423,22 @@ LOHA 的设计目标之一，就是让常见控制面写操作不要依赖“刚
 sudo ./uninstall.sh
 ```
 
-跳过卸载确认：
+安全的非交互卸载。会删除已安装的 LOHA 程序文件，但默认保留 `loha.conf`、`rules.conf`、`history/` 以及系统调优文件：
 
 ```bash
-sudo ./uninstall.sh --yes
+sudo ./uninstall.sh -y
+```
+
+彻底删除所有由 LOHA 管理的文件，包括配置、历史快照和内核调优文件：
+
+```bash
+sudo ./uninstall.sh --purge
+```
+
+非交互执行彻底删除：
+
+```bash
+sudo ./uninstall.sh -y --purge
 ```
 
 推荐升级路径：

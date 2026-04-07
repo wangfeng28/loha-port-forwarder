@@ -113,6 +113,6 @@ Simplified Chinese localization must follow these rules:
 The following categories must remain unchanged in Simplified Chinese text:
 
 - Config keys: `EXTERNAL_IFS`, `PRIMARY_EXTERNAL_IF`, `DEFAULT_SNAT_IP`, `LAN_IFS`, `LAN_NETS`, `LISTEN_IPS`, `PROTECTION_MODE`, `PROTECTED_NETS`, `ENABLE_EGRESS_SNAT`, `EGRESS_NETS`, `ENABLE_STRICT_LAN_VALIDATION`, `INTERNAL_IFS`, `TRUSTED_INTERNAL_NETS`, `AUTH_MODE`, `CONNTRACK_MODE`
-- Commands and flags: `loha`, `loha reload`, `loha reload --full`, `loha rules render`, `loha doctor`, `loha config wizard`, `--dry-run`, `--non-interactive`, `--yes`
+- Commands and flags: `loha`, `loha reload`, `loha reload --full`, `loha rules render`, `loha doctor`, `loha config wizard`, `--dry-run`, `--non-interactive`, `--purge`
 - Paths and filenames: `/etc/loha/loha.conf`, `/etc/loha/rules.conf`, `/etc/sysctl.d/90-loha-forwarding.conf`
 - Kernel and firewall syntax: `ct mark`, `ct label`, `rp_filter`, `conntrack`, `nftables`, `systemd`
