@@ -2,6 +2,7 @@ import argparse
 import socket
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional, Sequence, Tuple
@@ -9,7 +10,7 @@ from typing import Iterable, Optional, Sequence, Tuple
 from .config_access import load_management_config
 from .config import normalize_mapping, render_canonical_text, recommended_config
 from .constants import LOHA_NFT_TABLE_NAME
-from .control_tx import commit_desired_state, control_file_lock, remove_runtime_state
+from .control_tx import commit_desired_state, control_file_lock, remove_runtime_state, update_runtime_state
 from .exceptions import ApplyError, LohaError
 from .history import capture_snapshot_if_enabled
 from .i18n import (
@@ -25,7 +26,7 @@ from .i18n import (
     select_locale_interactive,
 )
 from .input_parsing import InputValidationError, parse_yes_no
-from .models import CanonicalConfig, InstallStepResult, LocalizedMessage, MenuOption, Paths
+from .models import CanonicalConfig, InstallStepResult, LocalizedMessage, MenuOption, Paths, RuntimeStateSnapshot
 from .precheck import count_level, has_failures, run_install_prechecks
 from .runtime_binding import sync_runtime_binding_state, sync_toggle_shortcut_state
 from .rules import load_rules, render_rules_text
@@ -203,6 +204,7 @@ def _install_recovery_targets(paths: Paths) -> Tuple[Path, ...]:
         paths.package_root,
         paths.share_dir,
         paths.service_unit,
+        paths.run_dir,
         paths.forwarding_sysctl,
         paths.conntrack_sysctl,
         paths.conntrack_modprobe,
@@ -764,9 +766,9 @@ def _persist_install_state(
     config: CanonicalConfig,
     rules_text: str,
     assume_locked: bool = False,
-) -> InstallStepResult:
+) -> Tuple[InstallStepResult, int]:
     try:
-        commit_desired_state(
+        revision = commit_desired_state(
             paths,
             config_text=render_canonical_text(config),
             rules_text=rules_text,
@@ -774,14 +776,83 @@ def _persist_install_state(
             reason="install-apply",
             capture_history=False,
             assume_locked=assume_locked,
-        )
+            extra_pending_actions=("install_sync",),
+        ).revision
     except Exception as exc:
-        return _step_error(
-            "install.history.write_failed",
-            "Install snapshot write failed: {error}",
-            error=str(exc),
+        return (
+            _step_error(
+                "install.history.write_failed",
+                "Install snapshot write failed: {error}",
+                error=str(exc),
+            ),
+            0,
         )
-    return _step_ok()
+    return _step_ok(), revision
+
+
+def _update_install_runtime_sync_state(
+    paths: Paths,
+    *,
+    desired_revision: int = 0,
+    install_pending: bool,
+    sysctl_pending: Optional[bool] = None,
+    last_error: Optional[str] = None,
+    assume_locked: bool = False,
+) -> None:
+    def _transform(current: RuntimeStateSnapshot) -> RuntimeStateSnapshot:
+        pending_actions = [action for action in current.pending_actions if action not in {"install_sync", "sysctl_sync"}]
+        if install_pending:
+            pending_actions.append("install_sync")
+        if sysctl_pending is None:
+            if "sysctl_sync" in current.pending_actions:
+                pending_actions.append("sysctl_sync")
+        elif sysctl_pending:
+            pending_actions.append("sysctl_sync")
+        return RuntimeStateSnapshot(
+            desired_revision=desired_revision or current.desired_revision,
+            applied_revision=current.applied_revision,
+            last_apply_mode=current.last_apply_mode,
+            last_apply_status=current.last_apply_status,
+            last_error=current.last_error if last_error is None else last_error,
+            pending_actions=tuple(dict.fromkeys(pending_actions)),
+            updated_at_epoch=int(time.time()),
+        )
+
+    update_runtime_state(paths, _transform, assume_locked=assume_locked)
+
+
+def _mark_install_runtime_sync_failure(
+    paths: Paths,
+    *,
+    desired_revision: int,
+    error: str,
+    sysctl_pending: bool = False,
+    assume_locked: bool = False,
+) -> None:
+    _update_install_runtime_sync_state(
+        paths,
+        desired_revision=desired_revision,
+        install_pending=True,
+        sysctl_pending=sysctl_pending,
+        last_error=error,
+        assume_locked=assume_locked,
+    )
+
+
+def _clear_install_runtime_sync(
+    paths: Paths,
+    *,
+    desired_revision: int = 0,
+    assume_locked: bool = False,
+) -> None:
+    _update_install_runtime_sync_state(
+        paths,
+        desired_revision=desired_revision,
+        install_pending=False,
+        sysctl_pending=False,
+        last_error="",
+        assume_locked=assume_locked,
+    )
 
 
 def _deploy_install_files(
@@ -1001,6 +1072,9 @@ def cmd_install(args) -> int:
                 ),
             )
             return 1
+    desired_revision = 0
+    install_error = None
+    recover_install_kwargs = None
     try:
         with control_file_lock(paths):
             deploy_result = _deploy_install_files(
@@ -1011,49 +1085,89 @@ def cmd_install(args) -> int:
                 i18n=i18n,
             )
             if not deploy_result.ok:
-                _print_error(i18n, deploy_result.error)
-                _recover_failed_install(recovery_state, adapter=adapter, i18n=i18n)
-                return 1
-            if not args.dry_run:
-                persist_result = _persist_install_state(
+                install_error = deploy_result.error
+                recover_install_kwargs = {}
+            elif not args.dry_run:
+                persist_result, desired_revision = _persist_install_state(
                     paths,
                     config=config,
                     rules_text=render_rules_text(rules),
                     assume_locked=True,
                 )
                 if not persist_result.ok:
-                    _print_error(i18n, persist_result.error)
-                    _recover_failed_install(recovery_state, adapter=adapter, i18n=i18n)
-                    return 1
-            system_feature_result = _apply_install_system_features(paths, config, adapter, dry_run=args.dry_run, i18n=i18n)
-            if not system_feature_result.ok:
-                _print_error(i18n, system_feature_result.error)
-                _recover_failed_install(
-                    recovery_state,
-                    adapter=adapter,
+                    install_error = persist_result.error
+                    recover_install_kwargs = {}
+                else:
+                    system_feature_result = _apply_install_system_features(
+                        paths,
+                        config,
+                        adapter,
+                        dry_run=args.dry_run,
+                        i18n=i18n,
+                    )
+                    if not system_feature_result.ok:
+                        install_error = system_feature_result.error
+                        _mark_install_runtime_sync_failure(
+                            paths,
+                            desired_revision=desired_revision,
+                            error=system_feature_result.error.render(),
+                            sysctl_pending=system_feature_result.error is not None
+                            and system_feature_result.error.message_key == "install.system_features.sysctl_failed",
+                            assume_locked=True,
+                        )
+                        recover_install_kwargs = {
+                            "reload_sysctl_runtime": system_feature_result.error is not None
+                            and system_feature_result.error.message_key == "install.system_features.sysctl_failed",
+                        }
+            else:
+                system_feature_result = _apply_install_system_features(
+                    paths,
+                    config,
+                    adapter,
+                    dry_run=args.dry_run,
                     i18n=i18n,
-                    reload_sysctl_runtime=system_feature_result.error is not None
-                    and system_feature_result.error.message_key == "install.system_features.sysctl_failed",
                 )
-                return 1
-            activation_result = _activate_install_service(paths, adapter, dry_run=args.dry_run, i18n=i18n)
-            if not activation_result.ok:
-                _print_error(i18n, activation_result.error)
-                activation_command = ""
-                if activation_result.error is not None:
-                    activation_command = str(activation_result.error.values.get("command", ""))
-                _recover_failed_install(
-                    recovery_state,
-                    adapter=adapter,
-                    i18n=i18n,
-                    reload_sysctl_runtime=True,
-                    reload_systemd_manager=activation_result.error is not None
-                    and activation_result.error.message_key == "install.service.action_failed",
-                    restore_service_runtime=activation_result.error is not None
-                    and activation_result.error.message_key == "install.service.action_failed"
-                    and activation_command == f"systemctl restart {paths.service_unit.name}",
-                )
-                return 1
+                if not system_feature_result.ok:
+                    install_error = system_feature_result.error
+                    recover_install_kwargs = {}
+        if install_error is not None:
+            _print_error(i18n, install_error)
+            _recover_failed_install(
+                recovery_state,
+                adapter=adapter,
+                i18n=i18n,
+                **(recover_install_kwargs or {}),
+            )
+            return 1
+        activation_result = _activate_install_service(paths, adapter, dry_run=args.dry_run, i18n=i18n)
+        if not activation_result.ok:
+            _print_error(i18n, activation_result.error)
+            activation_command = ""
+            if activation_result.error is not None:
+                activation_command = str(activation_result.error.values.get("command", ""))
+            if not args.dry_run and activation_result.error is not None:
+                with control_file_lock(paths):
+                    _mark_install_runtime_sync_failure(
+                        paths,
+                        desired_revision=desired_revision,
+                        error=activation_result.error.render(),
+                        assume_locked=True,
+                    )
+            _recover_failed_install(
+                recovery_state,
+                adapter=adapter,
+                i18n=i18n,
+                reload_sysctl_runtime=True,
+                reload_systemd_manager=activation_result.error is not None
+                and activation_result.error.message_key == "install.service.action_failed",
+                restore_service_runtime=activation_result.error is not None
+                and activation_result.error.message_key == "install.service.action_failed"
+                and activation_command == f"systemctl restart {paths.service_unit.name}",
+            )
+            return 1
+        if not args.dry_run:
+            with control_file_lock(paths):
+                _clear_install_runtime_sync(paths, desired_revision=desired_revision, assume_locked=True)
         print(_t(i18n, "install.completed", "Installation files are in place."))
         return 0
     finally:
@@ -1107,8 +1221,20 @@ def cmd_uninstall(args) -> int:
             i18n=i18n,
         )
     with control_file_lock(paths):
+        _update_install_runtime_sync_state(
+            paths,
+            install_pending=True,
+            assume_locked=True,
+        )
         payload_result = _remove_installation_payload(paths, dry_run=False, i18n=i18n, remove_run_dir=False)
         if not payload_result.ok:
+            if payload_result.error is not None:
+                _mark_install_runtime_sync_failure(
+                    paths,
+                    desired_revision=0,
+                    error=payload_result.error.render(),
+                    assume_locked=True,
+                )
             _print_error(i18n, payload_result.error)
             return 1
         data_result = _remove_uninstall_data(
@@ -1119,12 +1245,20 @@ def cmd_uninstall(args) -> int:
             i18n=i18n,
         )
         if not data_result.ok:
+            if data_result.error is not None:
+                _mark_install_runtime_sync_failure(
+                    paths,
+                    desired_revision=0,
+                    error=data_result.error.render(),
+                    assume_locked=True,
+                )
             _print_error(i18n, data_result.error)
             return 1
-        remove_runtime_state(paths, assume_locked=True)
         for runtime_file in (paths.control_state_file, paths.debug_ruleset_file):
             _remove_path(runtime_file, dry_run=False, i18n=i18n)
-        _sync_uninstall_runtime(paths, adapter, dry_run=False, i18n=i18n)
+    _sync_uninstall_runtime(paths, adapter, dry_run=False, i18n=i18n)
+    with control_file_lock(paths):
+        remove_runtime_state(paths, assume_locked=True)
     _remove_path(paths.run_dir, dry_run=False, i18n=i18n)
     print(_t(i18n, "install.uninstall.completed", "LOHA has been removed from the system."))
     return 0

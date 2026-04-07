@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from loha.config import normalize_mapping, recommended_config, render_canonical_text
+from loha.control_tx import control_file_lock, read_runtime_state
 from loha.exceptions import ApplyError, ConfigSyntaxError
 from loha.history import list_snapshots
 from loha.i18n import build_runtime_i18n
@@ -770,6 +771,61 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(1, exit_code)
         self.assertIn("错误：安装阶段执行 `sysctl --system` 失败：boom", output.getvalue())
 
+    def test_cmd_install_marks_install_sync_until_activation_then_clears_it(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        adapter = RecordingAdapter()
+        etc_dir = temp_dir / "etc"
+        etc_dir.mkdir(parents=True, exist_ok=True)
+        (etc_dir / "rules.conf").write_text("", encoding="utf-8")
+        args = SimpleNamespace(
+            etc_dir=str(etc_dir),
+            prefix=str(temp_dir / "prefix"),
+            run_dir=str(temp_dir / "run"),
+            systemd_dir=str(temp_dir / "systemd"),
+            non_interactive=True,
+            dry_run=False,
+            uninstall=False,
+            yes=False,
+        )
+        activation_observed = {}
+
+        def fake_activate(paths, _adapter, *, dry_run: bool, i18n=None):
+            self.assertFalse(dry_run)
+            with control_file_lock(paths, timeout_seconds=0.0):
+                pass
+            runtime_state = read_runtime_state(paths)
+            activation_observed["pending_actions"] = runtime_state.pending_actions
+            return InstallStepResult(ok=True)
+
+        with patch("loha.install.SubprocessSystemAdapter", return_value=adapter), patch(
+            "loha.install._build_install_i18n", return_value=self.runtime
+        ), patch(
+            "loha.install._run_interactive_prechecks", return_value=True
+        ), patch(
+            "loha.install._choose_install_initial_config", return_value=self.config
+        ), patch(
+            "loha.install._resolve_install_config", return_value=(self.config, False, ())
+        ), patch(
+            "loha.install.detect_upstream_firewall_target", return_value="network.target"
+        ), patch(
+            "loha.install._deploy_install_files", return_value=InstallStepResult(ok=True)
+        ), patch(
+            "loha.install._apply_install_system_features", return_value=InstallStepResult(ok=True)
+        ), patch(
+            "loha.install._activate_install_service", side_effect=fake_activate
+        ):
+            exit_code = cmd_install(args)
+        self.assertEqual(0, exit_code)
+        self.assertIn("install_sync", activation_observed["pending_actions"])
+        runtime_state = read_runtime_state(
+            SimpleNamespace(
+                etc_dir=etc_dir,
+                run_dir=temp_dir / "run",
+            )
+        )
+        self.assertNotIn("install_sync", runtime_state.pending_actions)
+        self.assertIn("reload", runtime_state.pending_actions)
+
     def test_cmd_install_rolls_back_clean_install_when_activation_fails(self):
         temp_dir = Path(tempfile.mkdtemp())
         adapter = RestartFailingInstallAdapter(service_enabled=False, service_active=False)
@@ -814,7 +870,52 @@ class InstallTests(unittest.TestCase):
         self.assertFalse((temp_dir / "prefix" / "lib" / "loha-port-forwarder").exists())
         self.assertFalse((temp_dir / "prefix" / "share" / "loha").exists())
         self.assertFalse((temp_dir / "systemd" / "loha.service").exists())
+        self.assertFalse((temp_dir / "run").exists())
         self.assertIn("partial changes were rolled back", output.getvalue())
+
+    def test_cmd_uninstall_marks_install_sync_until_runtime_cleanup(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        adapter = UninstallAdapter()
+        etc_dir = temp_dir / "etc"
+        prefix_dir = temp_dir / "prefix"
+        systemd_dir = temp_dir / "systemd"
+        run_dir = temp_dir / "run"
+        (etc_dir / "history").mkdir(parents=True, exist_ok=True)
+        (etc_dir / "loha.conf").write_text(render_canonical_text(self.config), encoding="utf-8")
+        (etc_dir / "rules.conf").write_text("", encoding="utf-8")
+        (prefix_dir / "bin").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "libexec" / "loha").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "lib" / "loha-port-forwarder").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "share" / "loha").mkdir(parents=True, exist_ok=True)
+        (systemd_dir).mkdir(parents=True, exist_ok=True)
+        (run_dir / "loha").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "bin" / "loha").write_text("cli", encoding="utf-8")
+        (prefix_dir / "libexec" / "loha" / "loader.sh").write_text("loader", encoding="utf-8")
+        (systemd_dir / "loha.service").write_text("unit", encoding="utf-8")
+        observed = {}
+
+        def fake_sync(paths, _adapter, *, dry_run: bool, i18n=None):
+            self.assertFalse(dry_run)
+            observed["pending_actions"] = read_runtime_state(paths).pending_actions
+
+        with patch("loha.install.SubprocessSystemAdapter", return_value=adapter), patch(
+            "loha.install._build_install_i18n", return_value=self.runtime
+        ), patch(
+            "loha.install._sync_uninstall_runtime", side_effect=fake_sync
+        ), redirect_stdout(io.StringIO()):
+            exit_code = cmd_uninstall(
+                SimpleNamespace(
+                    etc_dir=str(etc_dir),
+                    prefix=str(prefix_dir),
+                    run_dir=str(run_dir),
+                    systemd_dir=str(systemd_dir),
+                    non_interactive=True,
+                    yes=True,
+                )
+            )
+        self.assertEqual(0, exit_code)
+        self.assertIn("install_sync", observed["pending_actions"])
+        self.assertFalse(run_dir.exists())
 
     def test_cmd_install_resyncs_sysctl_runtime_when_activation_fails_after_system_feature_apply(self):
         temp_dir = Path(tempfile.mkdtemp())
