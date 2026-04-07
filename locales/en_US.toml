@@ -473,6 +473,17 @@ no_conflict = "Listener conflict check: no local listener conflicts detected"
 pass = "Renderer check: rules render successfully"
 fail = "Renderer check: rules render failed"
 
+[messages.doctor.control]
+manifest_missing = "Control-plane state check: state.json is missing"
+manifest_mismatch = "Control-plane state check: state.json does not match live desired-state files"
+manifest_ok = "Control-plane state check: state.json matches live desired-state files"
+pending_txn = "Control-plane transaction check: a pending desired-state transaction requires reconciliation"
+pending_clear = "Control-plane transaction check: no pending desired-state transaction remains"
+pending_runtime = "Control-plane runtime check: desired state is ahead of runtime sync"
+pending_runtime_detail = "pending actions: {actions}; desired revision={desired_revision}, applied revision={applied_revision}"
+runtime_synced = "Control-plane runtime check: desired state and runtime state are synchronized"
+last_apply_failed = "Control-plane apply check: the last apply attempt failed"
+
 [messages.doctor.runtime_binding]
 external_invalid = "Runtime binding check: external binding is invalid"
 external_auto = "Runtime binding check: EXTERNAL_IFS auto materialized successfully"

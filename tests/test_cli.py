@@ -1860,6 +1860,45 @@ class CliTests(unittest.TestCase):
         self.assertIn("[警告] 依赖检查：缺少 nft", rendered)
         self.assertIn("当前值=0", rendered)
 
+    def test_doctor_control_plane_lines_use_runtime_locale(self):
+        paths = self._paths()
+        self._write_config(paths, history_mode="on", locale="zh_CN")
+        out = io.StringIO()
+        results = [
+            DoctorResult(
+                "pass",
+                "Control-plane state check: state.json matches live desired-state files",
+                summary_key="doctor.control.manifest_ok",
+                summary_default="Control-plane state check: state.json matches live desired-state files",
+            ),
+            DoctorResult(
+                "pass",
+                "Control-plane transaction check: no pending desired-state transaction remains",
+                summary_key="doctor.control.pending_clear",
+                summary_default="Control-plane transaction check: no pending desired-state transaction remains",
+            ),
+            DoctorResult(
+                "pass",
+                "Control-plane runtime check: desired state and runtime state are synchronized",
+                summary_key="doctor.control.runtime_synced",
+                summary_default="Control-plane runtime check: desired state and runtime state are synchronized",
+            ),
+        ]
+        with patch("loha.cli.run_doctor", return_value=results), redirect_stdout(out):
+            exit_code = cmd_doctor(
+                Namespace(
+                    etc_dir=str(paths.etc_dir),
+                    prefix=str(paths.prefix),
+                    run_dir=str(paths.run_dir),
+                    systemd_dir=str(paths.systemd_unit_dir),
+                )
+            )
+        rendered = out.getvalue()
+        self.assertEqual(0, exit_code)
+        self.assertIn("[通过] 控制面状态检查：state.json 与当前 desired-state 文件一致", rendered)
+        self.assertIn("[通过] 控制面事务检查：当前没有残留的 desired-state 待处理事务", rendered)
+        self.assertIn("[通过] 控制面运行状态检查：desired state 与 runtime state 已同步", rendered)
+
     def test_resolve_editor_command_rejects_whitespace_wrapped_commands(self):
         with self.assertRaises(Exception):
             _resolve_editor_command("vim -f")

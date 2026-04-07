@@ -473,6 +473,17 @@ no_conflict = "监听冲突检查：未发现本地监听冲突"
 pass = "渲染检查：规则渲染成功"
 fail = "渲染检查：规则渲染失败"
 
+[messages.doctor.control]
+manifest_missing = "控制面状态检查：缺少 state.json"
+manifest_mismatch = "控制面状态检查：state.json 与当前 desired-state 文件不一致"
+manifest_ok = "控制面状态检查：state.json 与当前 desired-state 文件一致"
+pending_txn = "控制面事务检查：存在待协调的 desired-state 事务"
+pending_clear = "控制面事务检查：当前没有残留的 desired-state 待处理事务"
+pending_runtime = "控制面运行状态检查：desired state 领先于 runtime 同步状态"
+pending_runtime_detail = "待处理动作：{actions}；desired revision={desired_revision}，applied revision={applied_revision}"
+runtime_synced = "控制面运行状态检查：desired state 与 runtime state 已同步"
+last_apply_failed = "控制面应用检查：最近一次 apply 尝试失败"
+
 [messages.doctor.runtime_binding]
 external_invalid = "运行时绑定检查：外部接口绑定无效"
 external_auto = "运行时绑定检查：EXTERNAL_IFS auto 已成功物化"
