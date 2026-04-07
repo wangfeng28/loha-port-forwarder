@@ -316,6 +316,8 @@ sudo loha list
 sudo nft list table ip loha_port_forwarder
 ```
 
+如果你想用机器可读方式检查安装后的状态，现在可以直接看 `sudo loha config show --json` 里的 `control_plane` 摘要；其中会包含 desired/applied revision、pending actions，以及上一次 apply 的结果。需要排查控制面同步状态时，优先看这里和 `loha doctor`，不要手工修改 `/run/loha/` 下的文件。
+
 ### 非交互安装与演练
 
 本节里的命令默认你已经位于一个解压后的 release 目录或本地工作树中。
@@ -379,6 +381,8 @@ KEY="VALUE"
 
 - `/etc/loha/loha.conf`
 - `/etc/loha/rules.conf`
+- `/etc/loha/state.json`
+- `/etc/loha/txn/`
 - `/etc/loha/history/`
 - `/usr/local/bin/loha`
 - `/usr/local/libexec/loha/loader.sh`
@@ -389,6 +393,8 @@ KEY="VALUE"
 - `/etc/sysctl.d/90-loha-conntrack.conf` (按需)
 - `/etc/modprobe.d/loha-conntrack.conf` (按需)
 - `/run/loha/`
+
+其中 `/etc/loha/state.json`、`/etc/loha/txn/` 和 `/run/loha/` 下的额外文件，属于 LOHA 自己维护的控制面元数据。它们用于保存 desired state revision、staged transaction、runtime sync 状态，以及恢复时需要的 breadcrumbs；它们不是第二套给用户手工维护的配置入口。
 
 ### 卸载与升级
 
@@ -1038,11 +1044,18 @@ sudo loha conntrack set 500000 50
 
 以下能力特别适合脚本、编排工具和 Agent：
 
-- `--json`：适用于 `list`、`rules render`、`doctor`、`config show`、`config set`、别名与端口规则写操作、`rpfilter`、`conntrack` 等命令。
+- `--json`：适用于 `list`、`rules render`、`doctor`、`config show`、`config set`、`reload`、`config history status/show`、`config rollback`、别名与端口规则写操作、`rpfilter`、`conntrack` 等命令。
 - `--check` 或 `--dry-run`：适用于会修改 `loha.conf`、`rules.conf` 或系统调优文件的命令。
 - 稳定的结果分类、错误分类和退出码，便于调用方按机器语义判断结果。
 
 `--check` 会校验请求并预演目标结果，但不会真正写文件、创建历史快照或执行 `sysctl --system`。
+
+如果你是从自动化侧消费 LOHA 的控制面状态，当前最实用的是下面这些字段和入口：
+
+- `config show --json`：包含 `control_plane.desired_revision`、`applied_revision`、`runtime_synced`、`pending_actions` 和 `last_error`
+- `reload --json`：返回 requested/effective mode，以及当前 revision 与 pending action
+- `config history status/show --json`：直接提供 snapshot 状态，不需要解析人类输出
+- `config rollback --json`：直接说明恢复来源，以及是否还存在例如 `reload` 这类待同步动作
 
 ## 14 文档 测试 翻译
 

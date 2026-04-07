@@ -315,6 +315,8 @@ sudo loha list
 sudo nft list table ip loha_port_forwarder
 ```
 
+If you want a machine-readable post-install status, `sudo loha config show --json` now includes a `control_plane` summary with desired and applied revisions, pending actions, and the last apply result. That is the supported way to inspect LOHA's control-plane sync state; do not treat files under `/run/loha/` as something to edit by hand.
+
 ### Non Interactive Install and Dry Runs
 
 The examples in this section assume you are running from an extracted release archive or a local working tree.
@@ -378,6 +380,8 @@ The default installed layout includes:
 
 - `/etc/loha/loha.conf`
 - `/etc/loha/rules.conf`
+- `/etc/loha/state.json`
+- `/etc/loha/txn/`
 - `/etc/loha/history/`
 - `/usr/local/bin/loha`
 - `/usr/local/libexec/loha/loader.sh`
@@ -388,6 +392,8 @@ The default installed layout includes:
 - `/etc/sysctl.d/90-loha-conntrack.conf` when needed
 - `/etc/modprobe.d/loha-conntrack.conf` when needed
 - `/run/loha/`
+
+The extra files under `/etc/loha/state.json`, `/etc/loha/txn/`, and `/run/loha/` are LOHA-managed control-plane metadata. They exist so LOHA can keep desired state, staged transactions, runtime sync state, and recovery breadcrumbs consistent across config writes, reloads, rollback, install, and uninstall. They are not intended as a second user-facing config surface.
 
 ### Uninstall and Upgrade
 
@@ -1037,11 +1043,18 @@ sudo loha conntrack set 500000 50
 
 The following are especially useful for scripts, orchestration tools, and agents:
 
-- `--json` on commands such as `list`, `rules render`, `doctor`, `config show`, `config set`, alias and port writes, `rpfilter`, and `conntrack`
+- `--json` on commands such as `list`, `rules render`, `doctor`, `config show`, `config set`, `reload`, `config history status/show`, `config rollback`, alias and port writes, `rpfilter`, and `conntrack`
 - `--check` or `--dry-run` on commands that would otherwise modify `loha.conf`, `rules.conf`, or LOHA-managed system-tuning files
 - stable result categories, error categories, and exit codes for machine-side handling
 
 `--check` validates the request and previews the target result, but does not actually write files, create history snapshots, or run `sysctl --system`.
+
+For automation, the most useful control-plane fields now live in `config show --json` and the dedicated JSON endpoints:
+
+- `config show --json` exposes `control_plane.desired_revision`, `applied_revision`, `runtime_synced`, `pending_actions`, and the last apply error
+- `reload --json` reports requested and effective apply mode plus current revision state
+- `config history status/show --json` reports snapshot state without scraping human-facing output
+- `config rollback --json` reports what was restored and whether runtime still has pending work such as `reload`
 
 ## 14 Docs Testing Translation
 

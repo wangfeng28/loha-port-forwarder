@@ -175,8 +175,11 @@ Currently protected highlights:
 - dry run, localization, deployment layout, and system-feature file writes
 - call ordering for `systemctl daemon-reload`, `enable`, and `restart`
 - when the install path fails during deploy, persist, or activation, the install flow rolls back installer-managed paths so it does not leave a half-installed state behind
+- install persists `install_sync` into runtime metadata during install and uninstall finalization, instead of treating those lifecycle phases as invisible side effects
+- service activation now happens after the installer releases the global control lock, so install does not deadlock against the loader's own control-plane lock
 - when install fails after `sysctl --system`, the recovery flow runs `sysctl --system` again after restoring system-feature files so runtime state is brought back in line with the restored disk state
 - when install fails during `systemctl restart loha.service`, recovery re-aligns the `systemd` manager and the preinstall enable and active state instead of merely restoring the unit file
+- failed clean installs restore `run_dir` and runtime metadata alongside the rest of the installer-managed payload
 - uninstall confirmation and best-effort cleanup flow
 
 Recommended next additions:
@@ -228,6 +231,8 @@ Currently protected highlights:
 - the `AUTH_MODE` shared planner
 - the `systemd` paths for `reload` and `reload --full`
 - `history status/show/rollback`
+- `config show --json` exposes control-plane revision, pending-action, and last-error state without scraping terminal text
+- `reload --json`, `config history status/show --json`, and `config rollback --json` keep their machine-readable categories and revision/pending-action fields
 - shared update paths for `rpfilter` and `conntrack`
 - editor parsing, post-edit validation, and listener-conflict confirmation branches
 - `rules.conf` syntax and validation failures are localized in human-facing CLI/TUI output
@@ -298,6 +303,7 @@ Current coverage:
 Currently protected highlights:
 
 - locking and atomic rewrite for `rules.conf`
+- global control-lock usage plus `state.json`, `txn/pending.json`, and `runtime_state.json` reconcile/drift visibility across config, rollback, install, and uninstall
 - snapshot deduplication, recent-window reuse, and separate rollback checkpoints
 - after `rollback --apply` fails, if automatic recovery succeeds, the system returns to the pre-rollback file state
 - a rescue directory is preserved when rollback fails
@@ -305,6 +311,7 @@ Currently protected highlights:
 - `RP_FILTER_MODE=system` is now explicitly frozen as coherent whenever LOHA's own sysctl file is no longer writing `rp_filter`; the system holding `rp_filter` at `0/1/2` must no longer be misreported by `doctor` as "still LOHA-managed"
 - regression has been restored for the link between install apply and system-feature reporting: after install in `system/system` mode, `90-loha-forwarding.conf` keeps only `ip_forward`, conntrack tuning files are removed, and later status and doctor views should stay coherent
 - file writes and cleanup for system-feature files during install and uninstall
+- install and uninstall lifecycle state is surfaced through `install_sync` in runtime metadata instead of being invisible to diagnostics
 
 Recommended next additions:
 
@@ -331,6 +338,7 @@ Currently protected highlights:
 - `doctor` now interprets `systemd` and live `nft` state together: if the service is not running or the unit is missing, a missing table is coherent; only when the service is active and the table is missing does that become a real error
 - runtime-binding violations cause doctor to fail
 - runtime localization
+- doctor plus `config show --json` surface control-plane pending actions such as `reload`, `sysctl_sync`, and `install_sync` instead of forcing callers to infer runtime drift from side effects alone
 
 Recommended next additions:
 
