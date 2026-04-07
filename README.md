@@ -99,7 +99,7 @@ That exposes `8080-8089` and forwards to `18080-18089`. The external and destina
 ## Daily Use at a Glance
 
 - `sudo loha`: an interactive menu for first-time setup, occasional changes, and hands-on maintenance.
-- CLI: suited for scripts and automation, with common entry points including `alias`, `port`, `rules render`, `reload`, `config`, `doctor`, `config history`, and `config rollback`; `--json`, stable result/error categories, and `--check` / `--dry-run` also make it easier to use from Ansible and AI agents.
+- CLI: suited for scripts and automation, with common entry points including `alias`, `port`, `rules render`, `reload`, `config`, `doctor`, `config history`, and `config rollback`; `--json`, stable result/error categories, and `--check` / `--dry-run` also make it easier to use from Ansible and AI agents. Control-plane writes are serialized, so concurrent mutations should resolve as a coherent update or a lock conflict rather than silently interleaving.
 - Config files: core config lives in `/etc/loha/loha.conf`, and rules live in `/etc/loha/rules.conf`.
 - Change path: routine mapping changes usually use `reload`; structural control-plane changes such as `AUTH_MODE` should use `reload --full` for a full rebuild.
 

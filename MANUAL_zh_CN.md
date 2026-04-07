@@ -396,6 +396,23 @@ KEY="VALUE"
 
 其中 `/etc/loha/state.json`、`/etc/loha/txn/` 和 `/run/loha/` 下的额外文件，属于 LOHA 自己维护的控制面元数据。它们用于保存 desired state revision、staged transaction、runtime sync 状态，以及恢复时需要的 breadcrumbs；它们不是第二套给用户手工维护的配置入口。
 
+### 控制面一致性与并发修改
+
+LOHA 的设计目标之一，就是让常见控制面写操作不要依赖“刚好没撞车”的 shell 时序。
+
+实际可以这样理解：
+
+- `loha.conf` 和 `rules.conf` 会被当作一组 desired state 一起看待，而不是两份互不相关的文件
+- `config set`、别名和端口规则改动、raw `rules.conf` 编辑、rollback、install、uninstall，以及 apply/reload 这些会改控制面状态的路径，都走同一套 control-plane transaction
+- LOHA 会用内部独占锁把这些写操作串行化；如果已经有别的控制面改动在进行，后来的调用会先短暂等待，之后明确报锁冲突，而不是把多次写入悄悄交错到一起
+- raw `rules.conf` 编辑会先在 staged 副本上校验，通过后才提交，所以一次失败编辑不会直接污染 live 文件对
+
+对运维和自动化来说，最值得记住的是：
+
+- `/etc/loha/state.json`、`/etc/loha/txn/` 和 `/run/loha/` 都应视为 LOHA 自己维护的元数据，不要手工编辑
+- 需要区分 desired state、applied state、pending action 或最近一次 apply 错误时，优先看 `loha config show --json` 和 `loha doctor`
+- 如果自动化收到锁冲突结果，应把它当成真实的控制面竞争信号，按显式重试策略处理，而不是假定这次写入已经部分生效
+
 ### 卸载与升级
 
 如果你是通过 release bootstrap 路径安装，而且没有保留本地 release 目录，那么在执行 `./uninstall.sh` 之前，需要先重新下载并解压对应 release 压缩包。
@@ -1047,6 +1064,7 @@ sudo loha conntrack set 500000 50
 - `--json`：适用于 `list`、`rules render`、`doctor`、`config show`、`config set`、`reload`、`config history status/show`、`config rollback`、别名与端口规则写操作、`rpfilter`、`conntrack` 等命令。
 - `--check` 或 `--dry-run`：适用于会修改 `loha.conf`、`rules.conf` 或系统调优文件的命令。
 - 稳定的结果分类、错误分类和退出码，便于调用方按机器语义判断结果。
+- 当另一条控制面写路径已经持有独占写锁时，会明确返回锁冲突，而不是默默把并发写入交错在一起。
 
 `--check` 会校验请求并预演目标结果，但不会真正写文件、创建历史快照或执行 `sysctl --system`。
 

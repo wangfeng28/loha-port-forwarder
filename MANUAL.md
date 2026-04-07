@@ -395,6 +395,23 @@ The default installed layout includes:
 
 The extra files under `/etc/loha/state.json`, `/etc/loha/txn/`, and `/run/loha/` are LOHA-managed control-plane metadata. They exist so LOHA can keep desired state, staged transactions, runtime sync state, and recovery breadcrumbs consistent across config writes, reloads, rollback, install, and uninstall. They are not intended as a second user-facing config surface.
 
+### Control-Plane Consistency and Concurrent Changes
+
+LOHA is designed so that normal control-plane mutations do not rely on shell timing luck.
+
+In practical terms:
+
+- `loha.conf` and `rules.conf` are treated as one desired-state pair, not as two unrelated files
+- mutating paths such as `config set`, alias and port changes, raw `rules.conf` edits, rollback, install, uninstall, and apply/reload all go through the same control-plane transaction path
+- LOHA serializes those mutations with an internal exclusive lock; if another control-plane change is already in progress, a later caller should block briefly and then fail with a lock-conflict style error rather than partially interleaving writes
+- raw `rules.conf` editing uses a staged copy and validation before commit, so a failed edit does not overwrite the live file pair
+
+For operators and automation, the important takeaway is simple:
+
+- treat `/etc/loha/state.json`, `/etc/loha/txn/`, and `/run/loha/` as LOHA-owned metadata, not as files to hand-edit
+- use `loha config show --json` or `loha doctor` when you need to understand desired versus applied state, pending actions, or the last apply error
+- if automation sees a lock-conflict result, treat it as a real control-plane contention signal and retry deliberately instead of assuming the change partially succeeded
+
 ### Uninstall and Upgrade
 
 If you installed from the release bootstrap path and did not keep a local copy of the release archive, download and unpack the release archive again before using `./uninstall.sh`.
@@ -1046,6 +1063,7 @@ The following are especially useful for scripts, orchestration tools, and agents
 - `--json` on commands such as `list`, `rules render`, `doctor`, `config show`, `config set`, `reload`, `config history status/show`, `config rollback`, alias and port writes, `rpfilter`, and `conntrack`
 - `--check` or `--dry-run` on commands that would otherwise modify `loha.conf`, `rules.conf`, or LOHA-managed system-tuning files
 - stable result categories, error categories, and exit codes for machine-side handling
+- explicit lock-conflict reporting when another control-plane mutation already holds the exclusive writer path
 
 `--check` validates the request and previews the target result, but does not actually write files, create history snapshots, or run `sysctl --system`.
 
