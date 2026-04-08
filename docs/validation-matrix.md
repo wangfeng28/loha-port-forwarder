@@ -372,7 +372,7 @@ Recommended next additions:
 
 ## Current Conclusion
 
-As of 2026-03-26, the validation baseline in the current Python repository has converged from a historical shell-test list into:
+The validation baseline in the current Python repository has converged from a historical shell-test list into:
 
 1. `scripts/run_tests.sh` for full offline regression
 2. `scripts/run_smoke.sh` for minimal smoke chaining

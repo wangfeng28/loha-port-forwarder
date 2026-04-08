@@ -92,7 +92,7 @@ def _remove_path(path: Path, *, dry_run: bool, i18n: Optional[RuntimeI18N] = Non
             print(_t(i18n, "install.dry_run.remove", "[dry-run] remove {path}", path=path))
         return
     if path.is_dir() and not path.is_symlink():
-        shutil.rmtree(path, ignore_errors=True)
+        shutil.rmtree(path)
         return
     if path.exists() or path.is_symlink():
         path.unlink()
@@ -946,19 +946,18 @@ def _deploy_install_files(
     return _step_ok()
 
 
-def _run_best_effort(adapter: SystemAdapter, argv: Sequence[str]) -> None:
+def _run_runtime_cleanup_command(adapter: SystemAdapter, argv: Sequence[str]) -> Optional[str]:
     if not argv:
-        return
-    if not adapter.command_exists(argv[0]):
-        return
-    adapter.run(argv, check=False)
-
-
-def _run_best_effort_nft_table_remove(adapter: SystemAdapter, family: str, table: str) -> None:
-    commands = adapter.nft_table_reset_commands(family, table)
-    for command in commands:
-        _run_best_effort(adapter, ["nft", *command.split()])
-        return
+        return None
+    command_text = " ".join(argv)
+    try:
+        result = adapter.run(argv, check=False)
+    except Exception as exc:
+        return f"{command_text}: {exc}"
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "command failed"
+        return f"{command_text}: {detail}"
+    return None
 
 
 def _remove_installation_payload(
@@ -1026,7 +1025,7 @@ def _sync_uninstall_runtime(
     *,
     dry_run: bool,
     i18n: RuntimeI18N,
-) -> None:
+) -> InstallStepResult:
     unit_name = paths.service_unit.name
     if dry_run:
         print(_t(i18n, "install.dry_run.stop", "[dry-run] systemctl stop {unit}", unit=unit_name))
@@ -1035,12 +1034,54 @@ def _sync_uninstall_runtime(
             print(_t(i18n, "install.dry_run.nft_destroy", f"[dry-run] nft {command}"))
         print(_t(i18n, "install.dry_run.daemon_reload", "[dry-run] systemctl daemon-reload"))
         print(_t(i18n, "install.dry_run.sysctl", "[dry-run] sysctl --system"))
-        return
-    _run_best_effort(adapter, ["systemctl", "stop", unit_name])
-    _run_best_effort(adapter, ["systemctl", "disable", unit_name])
-    _run_best_effort_nft_table_remove(adapter, "ip", LOHA_NFT_TABLE_NAME)
-    _run_best_effort(adapter, ["sysctl", "--system"])
-    _run_best_effort(adapter, ["systemctl", "daemon-reload"])
+        return _step_ok()
+
+    failures = []
+
+    systemctl_available = adapter.command_exists("systemctl")
+    if systemctl_available:
+        for argv in (
+            ["systemctl", "stop", unit_name],
+            ["systemctl", "disable", unit_name],
+        ):
+            error = _run_runtime_cleanup_command(adapter, argv)
+            if error:
+                failures.append(error)
+    else:
+        failures.append("Missing 'systemctl' command")
+
+    if adapter.command_exists("nft"):
+        try:
+            commands = adapter.nft_table_reset_commands("ip", LOHA_NFT_TABLE_NAME)
+        except Exception as exc:
+            failures.append(f"nft table reset probe failed: {exc}")
+        else:
+            for command in commands:
+                error = _run_runtime_cleanup_command(adapter, ["nft", *command.split()])
+                if error:
+                    failures.append(error)
+    else:
+        failures.append("Missing 'nft' command")
+
+    if adapter.command_exists("sysctl"):
+        error = _run_runtime_cleanup_command(adapter, ["sysctl", "--system"])
+        if error:
+            failures.append(error)
+    else:
+        failures.append("Missing 'sysctl' command")
+
+    if systemctl_available:
+        error = _run_runtime_cleanup_command(adapter, ["systemctl", "daemon-reload"])
+        if error:
+            failures.append(error)
+
+    if failures:
+        return _step_error(
+            "install.uninstall.runtime_cleanup_failed",
+            "Uninstall runtime cleanup failed: {error}",
+            error="; ".join(failures),
+        )
+    return _step_ok()
 
 
 def cmd_install(args) -> int:
@@ -1235,6 +1276,7 @@ def cmd_uninstall(args) -> int:
     adapter = SubprocessSystemAdapter()
     non_interactive = bool(getattr(args, "non_interactive", False))
     purge = bool(getattr(args, "purge", False))
+    dry_run = bool(getattr(args, "dry_run", False))
     remove_config_data = purge
     remove_system_tuning = purge
     if purge:
@@ -1289,6 +1331,30 @@ def cmd_uninstall(args) -> int:
                 default=False,
                 i18n=i18n,
             )
+    if dry_run:
+        payload_result = _remove_installation_payload(paths, dry_run=True, i18n=i18n, remove_run_dir=False)
+        if not payload_result.ok:
+            _print_error(i18n, payload_result.error)
+            return 1
+        data_result = _remove_uninstall_data(
+            paths,
+            remove_config_data=remove_config_data,
+            remove_system_tuning=remove_system_tuning,
+            dry_run=True,
+            i18n=i18n,
+        )
+        if not data_result.ok:
+            _print_error(i18n, data_result.error)
+            return 1
+        for runtime_file in (paths.control_state_file, paths.debug_ruleset_file, paths.runtime_state_file):
+            _remove_path(runtime_file, dry_run=True, i18n=i18n)
+        runtime_result = _sync_uninstall_runtime(paths, adapter, dry_run=True, i18n=i18n)
+        if not runtime_result.ok:
+            _print_error(i18n, runtime_result.error)
+            return 1
+        _remove_path(paths.run_dir, dry_run=True, i18n=i18n)
+        print(_t(i18n, "install.dry_run.notice", "[dry-run] filesystem changes were not applied"))
+        return 0
     with control_file_lock(paths):
         _update_install_runtime_sync_state(
             paths,
@@ -1325,7 +1391,18 @@ def cmd_uninstall(args) -> int:
             return 1
         for runtime_file in (paths.control_state_file, paths.debug_ruleset_file):
             _remove_path(runtime_file, dry_run=False, i18n=i18n)
-    _sync_uninstall_runtime(paths, adapter, dry_run=False, i18n=i18n)
+    runtime_result = _sync_uninstall_runtime(paths, adapter, dry_run=False, i18n=i18n)
+    if not runtime_result.ok:
+        if runtime_result.error is not None:
+            with control_file_lock(paths):
+                _mark_install_runtime_sync_failure(
+                    paths,
+                    desired_revision=0,
+                    error=runtime_result.error.render(),
+                    assume_locked=True,
+                )
+            _print_error(i18n, runtime_result.error)
+        return 1
     with control_file_lock(paths):
         remove_runtime_state(paths, assume_locked=True)
     _remove_path(paths.run_dir, dry_run=False, i18n=i18n)

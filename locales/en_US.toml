@@ -120,6 +120,7 @@ data_prompt = "Delete all user configuration data ({path})? [y/N]: "
 system_tuning_prompt = "Remove kernel network tuning parameters ({nat}, {conntrack}, {modprobe})? [y/N]: "
 completed = "LOHA has been removed from the system."
 remove_failed = "Failed to remove installed LOHA files: {error}"
+runtime_cleanup_failed = "Uninstall runtime cleanup failed: {error}"
 
 [messages.menu]
 choice = "Choice"

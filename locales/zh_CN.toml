@@ -120,6 +120,7 @@ data_prompt = "是否删除所有用户配置数据（{path}）？[y/N]: "
 system_tuning_prompt = "是否删除内核网络调优参数（{nat}、{conntrack}、{modprobe}）？[y/N]: "
 completed = "LOHA 已从系统中移除。"
 remove_failed = "删除已安装的 LOHA 文件失败：{error}"
+runtime_cleanup_failed = "卸载阶段清理运行时状态失败：{error}"
 
 [messages.menu]
 choice = "选择"

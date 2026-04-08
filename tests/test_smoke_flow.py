@@ -1,10 +1,16 @@
+import io
+import json
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from loha.config import recommended_config, render_canonical_text
+from loha.cli import cmd_config_history, cmd_config_rollback
+from loha.config import normalize_mapping, recommended_config, render_canonical_text
 from loha.doctor import run_doctor, summarize_doctor_results
 from loha.history import write_transaction
 from loha.i18n import build_runtime_i18n
@@ -270,6 +276,86 @@ class SmokeFlowTests(unittest.TestCase):
         self.assertFalse(adapter.live_ruleset)
         self.assertNotIn("loha.service", adapter.enabled_units)
         self.assertNotIn("loha.service", adapter.active_units)
+
+    def test_repo_local_offline_history_json_and_rollback_apply_flow(self):
+        root = Path(tempfile.mkdtemp())
+        paths = SmokePaths(root)
+        adapter = FakeSmokeAdapter()
+        runtime = build_runtime_i18n(Path(__file__).resolve().parents[1] / "locales")
+
+        config = _probe_install_initial_state(recommended_config(), adapter)
+        config = config.as_dict()
+        config["LOCALE"] = "en_US"
+        canonical = normalize_mapping(config)
+
+        deploy_result = _deploy_install_files(
+            paths,
+            repo_root=Path(__file__).resolve().parents[1],
+            upstream_target="firewalld.service",
+            dry_run=False,
+            i18n=runtime,
+        )
+        self.assertTrue(deploy_result.ok)
+        system_feature_result = _apply_install_system_features(paths, canonical, adapter, dry_run=False, i18n=runtime)
+        self.assertTrue(system_feature_result.ok)
+        write_transaction(
+            paths,
+            config_text=render_canonical_text(canonical),
+            rules_text=render_rules_text(type("Rules", (), {"aliases": (), "ports": ()})()),
+            source="installer",
+            reason="install",
+        )
+        activation_result = _activate_install_service(paths, adapter, dry_run=False, i18n=runtime)
+        self.assertTrue(activation_result.ok)
+
+        loader = LoaderService(paths=paths, adapter=adapter)
+        loader.apply_result(mode="full")
+
+        write_transaction(
+            paths,
+            config_text=render_canonical_text(canonical),
+            rules_text="ALIAS\tVM_WEB\t192.168.10.20\n",
+            source="cli",
+            reason="alias-add",
+        )
+        loader.apply_result(mode="reload")
+
+        history_out = io.StringIO()
+        with redirect_stdout(history_out):
+            history_exit = cmd_config_history(
+                SimpleNamespace(
+                    subcommand="show",
+                    json=True,
+                    etc_dir=str(paths.etc_dir),
+                    prefix=str(paths.prefix),
+                    run_dir=str(paths.run_dir),
+                    systemd_dir=str(paths.systemd_unit_dir),
+                )
+            )
+        history_payload = json.loads(history_out.getvalue())
+        self.assertEqual(0, history_exit)
+        self.assertEqual("history_show", history_payload["result"]["category"])
+        self.assertGreaterEqual(len(history_payload["snapshots"]), 1)
+
+        rollback_out = io.StringIO()
+        with patch(
+            "loha.cli._service_reload",
+            side_effect=lambda *_args, **_kwargs: loader.apply(mode="reload", runtime=runtime),
+        ), redirect_stdout(rollback_out):
+            rollback_exit = cmd_config_rollback(
+                SimpleNamespace(
+                    selector="latest",
+                    apply=True,
+                    json=False,
+                    etc_dir=str(paths.etc_dir),
+                    prefix=str(paths.prefix),
+                    run_dir=str(paths.run_dir),
+                    systemd_dir=str(paths.systemd_unit_dir),
+                )
+            )
+        self.assertEqual(0, rollback_exit)
+        self.assertEqual("", paths.rules_conf.read_text(encoding="utf-8"))
+        self.assertIn("Mappings hot-swapped successfully", rollback_out.getvalue())
 
 
 if __name__ == "__main__":

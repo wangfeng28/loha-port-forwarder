@@ -96,6 +96,21 @@ class UninstallAdapter(RecordingAdapter):
         return (f"destroy table {family} {table}",)
 
 
+class FailingCleanupAdapter(UninstallAdapter):
+    def __init__(self, failures):
+        super().__init__()
+        self.failures = dict(failures)
+
+    def run(self, argv, *, input_text: str = "", check: bool = True):
+        self.run_calls.append(tuple(argv))
+        failure = self.failures.get(tuple(argv))
+        if failure is None:
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        if isinstance(failure, Exception):
+            raise failure
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr=str(failure))
+
+
 class SysctlAdapter(RecordingAdapter):
     def command_exists(self, name: str) -> bool:
         return name == "sysctl"
@@ -587,6 +602,30 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(paths.service_unit.exists())
         self.assertFalse(paths.run_dir.exists())
 
+    def test_remove_installation_payload_reports_directory_removal_failure(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        paths = SimpleNamespace(
+            cli_wrapper=temp_dir / "prefix" / "bin" / "loha",
+            loader_wrapper=temp_dir / "prefix" / "libexec" / "loha" / "loader.sh",
+            package_root=temp_dir / "prefix" / "lib" / "loha-port-forwarder",
+            share_dir=temp_dir / "prefix" / "share" / "loha",
+            service_unit=temp_dir / "systemd" / "loha.service",
+            run_dir=temp_dir / "run" / "loha",
+        )
+        paths.cli_wrapper.parent.mkdir(parents=True, exist_ok=True)
+        paths.loader_wrapper.parent.mkdir(parents=True, exist_ok=True)
+        paths.package_root.mkdir(parents=True, exist_ok=True)
+        paths.share_dir.mkdir(parents=True, exist_ok=True)
+        paths.service_unit.parent.mkdir(parents=True, exist_ok=True)
+        paths.run_dir.mkdir(parents=True, exist_ok=True)
+        paths.cli_wrapper.write_text("cli", encoding="utf-8")
+        paths.loader_wrapper.write_text("loader", encoding="utf-8")
+        paths.service_unit.write_text("unit", encoding="utf-8")
+        with patch("loha.install.shutil.rmtree", side_effect=OSError("busy")):
+            result = _remove_installation_payload(paths, dry_run=False, i18n=self.runtime)
+        self.assertFalse(result.ok)
+        self.assertIn("busy", result.error.render())
+
     def test_remove_uninstall_data_can_remove_config_and_sysctl_files(self):
         temp_dir = Path(tempfile.mkdtemp())
         paths = SimpleNamespace(
@@ -655,10 +694,34 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(txn_dir.exists())
         self.assertFalse(scratch_file.exists())
 
-    def test_sync_uninstall_runtime_runs_best_effort_cleanup_sequence(self):
+    def test_sync_uninstall_runtime_runs_cleanup_sequence(self):
         adapter = UninstallAdapter()
         paths = SimpleNamespace(service_unit=Path("/tmp/loha.service"))
-        _sync_uninstall_runtime(paths, adapter, dry_run=False, i18n=self.runtime)
+        result = _sync_uninstall_runtime(paths, adapter, dry_run=False, i18n=self.runtime)
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            [
+                ("systemctl", "stop", "loha.service"),
+                ("systemctl", "disable", "loha.service"),
+                ("nft", "destroy", "table", "ip", "loha_port_forwarder"),
+                ("sysctl", "--system"),
+                ("systemctl", "daemon-reload"),
+            ],
+            adapter.run_calls,
+        )
+
+    def test_sync_uninstall_runtime_reports_failures_without_stopping_early(self):
+        adapter = FailingCleanupAdapter(
+            {
+                ("systemctl", "stop", "loha.service"): "stop boom",
+                ("sysctl", "--system"): "sysctl boom",
+            }
+        )
+        paths = SimpleNamespace(service_unit=Path("/tmp/loha.service"))
+        result = _sync_uninstall_runtime(paths, adapter, dry_run=False, i18n=self.runtime)
+        self.assertFalse(result.ok)
+        self.assertIn("systemctl stop loha.service: stop boom", result.error.render())
+        self.assertIn("sysctl --system: sysctl boom", result.error.render())
         self.assertEqual(
             [
                 ("systemctl", "stop", "loha.service"),
@@ -716,6 +779,7 @@ class InstallTests(unittest.TestCase):
             return_value=InstallStepResult(ok=True),
         ), patch(
             "loha.install._sync_uninstall_runtime",
+            return_value=InstallStepResult(ok=True),
         ), redirect_stdout(output):
             exit_code = cmd_uninstall(
                 SimpleNamespace(
@@ -764,6 +828,7 @@ class InstallTests(unittest.TestCase):
             return_value=InstallStepResult(ok=True),
         ) as data_mock, patch(
             "loha.install._sync_uninstall_runtime",
+            return_value=InstallStepResult(ok=True),
         ) as sync_mock, redirect_stdout(output):
             exit_code = cmd_uninstall(
                 SimpleNamespace(
@@ -815,6 +880,7 @@ class InstallTests(unittest.TestCase):
             return_value=InstallStepResult(ok=True),
         ) as data_mock, patch(
             "loha.install._sync_uninstall_runtime",
+            return_value=InstallStepResult(ok=True),
         ) as sync_mock, redirect_stdout(output):
             exit_code = cmd_uninstall(
                 SimpleNamespace(
@@ -855,6 +921,7 @@ class InstallTests(unittest.TestCase):
             return_value=InstallStepResult(ok=True),
         ) as data_mock, patch(
             "loha.install._sync_uninstall_runtime",
+            return_value=InstallStepResult(ok=True),
         ) as sync_mock, redirect_stdout(output):
             exit_code = cmd_uninstall(
                 SimpleNamespace(
@@ -891,6 +958,7 @@ class InstallTests(unittest.TestCase):
             return_value=InstallStepResult(ok=True),
         ) as data_mock, patch(
             "loha.install._sync_uninstall_runtime",
+            return_value=InstallStepResult(ok=True),
         ) as sync_mock, redirect_stdout(output):
             exit_code = cmd_uninstall(
                 SimpleNamespace(
@@ -1089,6 +1157,7 @@ class InstallTests(unittest.TestCase):
         def fake_sync(paths, _adapter, *, dry_run: bool, i18n=None):
             self.assertFalse(dry_run)
             observed["pending_actions"] = read_runtime_state(paths).pending_actions
+            return InstallStepResult(ok=True)
 
         with patch("loha.install.SubprocessSystemAdapter", return_value=adapter), patch(
             "loha.install._build_install_i18n", return_value=self.runtime
@@ -1108,6 +1177,104 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertIn("install_sync", observed["pending_actions"])
         self.assertFalse(run_dir.exists())
+
+    def test_cmd_uninstall_dry_run_keeps_files_and_runtime_state(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        adapter = UninstallAdapter()
+        etc_dir = temp_dir / "etc"
+        prefix_dir = temp_dir / "prefix"
+        systemd_dir = temp_dir / "systemd"
+        run_dir = temp_dir / "run"
+        (etc_dir / "history").mkdir(parents=True, exist_ok=True)
+        (etc_dir / "loha.conf").write_text(render_canonical_text(self.config), encoding="utf-8")
+        (etc_dir / "rules.conf").write_text("", encoding="utf-8")
+        (prefix_dir / "bin").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "libexec" / "loha").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "lib" / "loha-port-forwarder").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "share" / "loha").mkdir(parents=True, exist_ok=True)
+        systemd_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "loha").mkdir(parents=True, exist_ok=True)
+        (run_dir / "runtime_state.json").write_text("{}", encoding="utf-8")
+        (prefix_dir / "bin" / "loha").write_text("cli", encoding="utf-8")
+        (prefix_dir / "libexec" / "loha" / "loader.sh").write_text("loader", encoding="utf-8")
+        (systemd_dir / "loha.service").write_text("unit", encoding="utf-8")
+        output = io.StringIO()
+
+        with patch("loha.install.SubprocessSystemAdapter", return_value=adapter), patch(
+            "loha.install._build_install_i18n", return_value=self.runtime
+        ), redirect_stdout(output):
+            exit_code = cmd_uninstall(
+                SimpleNamespace(
+                    etc_dir=str(etc_dir),
+                    prefix=str(prefix_dir),
+                    run_dir=str(run_dir),
+                    systemd_dir=str(systemd_dir),
+                    non_interactive=True,
+                    purge=True,
+                    dry_run=True,
+                )
+            )
+        self.assertEqual(0, exit_code)
+        self.assertTrue((etc_dir / "loha.conf").exists())
+        self.assertTrue((prefix_dir / "bin" / "loha").exists())
+        self.assertTrue((run_dir / "runtime_state.json").exists())
+        self.assertIn("[dry-run]", output.getvalue())
+
+    def test_cmd_uninstall_preserves_runtime_state_when_runtime_cleanup_fails(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        adapter = UninstallAdapter()
+        etc_dir = temp_dir / "etc"
+        prefix_dir = temp_dir / "prefix"
+        systemd_dir = temp_dir / "systemd"
+        run_dir = temp_dir / "run"
+        (etc_dir / "history").mkdir(parents=True, exist_ok=True)
+        (etc_dir / "loha.conf").write_text(render_canonical_text(self.config), encoding="utf-8")
+        (etc_dir / "rules.conf").write_text("", encoding="utf-8")
+        (prefix_dir / "bin").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "libexec" / "loha").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "lib" / "loha-port-forwarder").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "share" / "loha").mkdir(parents=True, exist_ok=True)
+        systemd_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "loha").mkdir(parents=True, exist_ok=True)
+        (prefix_dir / "bin" / "loha").write_text("cli", encoding="utf-8")
+        (prefix_dir / "libexec" / "loha" / "loader.sh").write_text("loader", encoding="utf-8")
+        (systemd_dir / "loha.service").write_text("unit", encoding="utf-8")
+        output = io.StringIO()
+
+        with patch("loha.install.SubprocessSystemAdapter", return_value=adapter), patch(
+            "loha.install._build_install_i18n", return_value=self.runtime
+        ), patch(
+            "loha.install._sync_uninstall_runtime",
+            return_value=InstallStepResult(
+                ok=False,
+                error=LocalizedMessage(
+                    "install.uninstall.runtime_cleanup_failed",
+                    "Uninstall runtime cleanup failed: {error}",
+                    values={"error": "systemctl stop loha.service: boom"},
+                ),
+            ),
+        ), redirect_stdout(output):
+            exit_code = cmd_uninstall(
+                SimpleNamespace(
+                    etc_dir=str(etc_dir),
+                    prefix=str(prefix_dir),
+                    run_dir=str(run_dir),
+                    systemd_dir=str(systemd_dir),
+                    non_interactive=True,
+                    purge=True,
+                )
+            )
+        self.assertEqual(1, exit_code)
+        runtime_state = read_runtime_state(
+            SimpleNamespace(
+                etc_dir=etc_dir,
+                run_dir=run_dir,
+            )
+        )
+        self.assertIn("install_sync", runtime_state.pending_actions)
+        self.assertIn("systemctl stop loha.service: boom", runtime_state.last_error)
+        self.assertTrue((run_dir / "runtime_state.json").exists())
+        self.assertIn("Uninstall runtime cleanup failed", output.getvalue())
 
     def test_cmd_install_resyncs_sysctl_runtime_when_activation_fails_after_system_feature_apply(self):
         temp_dir = Path(tempfile.mkdtemp())
