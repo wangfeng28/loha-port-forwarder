@@ -224,6 +224,16 @@ sudo loha reload --full
 
 这里还有一个兼容性细节需要明确说明：完整 apply 不再假设所有受支持的 `nft` 解析器都接受同一种 table-reset 语法。LOHA 会在运行时探测能力，并在重建受管 table 时选择兼容的 reset 命令，而不是把 `destroy table ...` 当成唯一固定路径。
 
+如果你是在“新环境选型”而不是“继承既有环境”，更适合按代码实际依赖来表达推荐版本，而不是把所有组件都绑定到某一个发行版代际：
+
+- 文档最低 Linux kernel 基线：5.6+。
+- 文档最低 `Python` 基线：3.8+。
+- 文档最低 `nftables` 基线：0.9.4+。
+- 如果环境允许自行选择 `Python` 版本，推荐 3.11+；这样 LOHA 可以直接使用标准库 `tomllib`，不必再依赖额外的 `tomli` 兼容分支。
+- 如果环境允许自行选择 `nftables` 版本，推荐 1.0.7+；这样完整重建受管 table 时可以直接走原生 `destroy table ...` 路径。
+- 对较老但仍在文档支持范围内的 `nftables`，LOHA 仍会通过运行时能力探测走兼容路径，而不是直接视为不支持。
+- 对 Linux kernel 和 `systemd`，当前代码并没有高于最低基线的固定推荐版本；更合适的建议是使用所在发行版当前仍受支持的 LTS / 稳定版本。
+
 常见运行时依赖包括：
 
 - `python3`
@@ -455,6 +465,26 @@ sudo ./uninstall.sh -y --purge
 4. 用 `loha list` 和 `nft list table ip loha_port_forwarder` 做一次确认。
 
 正常升级不需要先卸载，直接重新运行安装器才是预期路径。
+
+如果你只是要在一台已正确保存配置的主机上做常规的小版本原地更新，最快的 bootstrap 路径是：
+
+```bash
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh -s -- --non-interactive
+```
+
+它更适合这些场景：
+
+- 你希望直接复用当前已经保存好的配置。
+- 你不需要重新走一遍交互安装问题。
+- 这次是正常更新，而不是重新设计网络拓扑。
+
+如果你想先预览这条路径：
+
+```bash
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh -s -- --non-interactive --dry-run
+```
+
+如果你希望固定版本，或者希望完整检查 release 文件，再执行升级，那么仍应优先使用 release archive 路径，而不是直接依赖 `releases/latest`。
 
 ## 7 日常使用
 
@@ -884,24 +914,26 @@ sudo loha conntrack status
 
 对 LOHA 这种会长期维护一批端口映射的工具来说，这种交换通常是划算的：用一点很轻的授权状态开销，换来更清楚的命中语义、更稳定的 map 查表路径，以及更容易长期维护的控制面。
 
-### FAQ 2 Pangolin 和 LOHA 怎么分工
+### FAQ 2 Traefik 这类带转发功能的软件和 LOHA 怎么分工协作
 
-如果你现在把 Pangolin 直接跑在 PVE 宿主机上，同时还让它承担大量基础转发，通常更清楚的分工是：
+Traefik、Pangolin、Nginx Proxy Manager 这类工具更偏应用入口与代理编排。
+
+以能力更完整的 Pangolin 为例，假如你现在把 Pangolin 直接跑在 PVE 宿主机上，同时还让它承担大量基础转发，通常更清楚的协作方式是：
 
 1. 在宿主机上安装 LOHA。
 2. 把 Pangolin 放到单独 VM。
 3. 用 LOHA 把 `80/tcp`、`443/tcp`、`51820/udp` 和 `21820/udp` 转给 Pangolin VM。
 4. 让 Pangolin 继续负责它擅长的 Web 反代、认证、策略和穿透。
+5. 少数确实需要借助 Pangolin 实现特殊需求的端口，也可以转给 Pangolin VM，并在 Pangolin 内完成对应设置。
+6. 不需要 Pangolin 应用层能力的服务端口，直接由 LOHA 转发给目标后端。
 
-这样做的原因很直接：
+这样分工的原因很直接：
 
 - LOHA 更适合宿主机上的 L3 和 L4 转发控制。
-- Pangolin 更适合应用层入口。
+- Pangolin 这类工具更适合应用层入口、代理和访问策略。
 - 宿主机职责和应用入口职责分开之后，边界更清楚，也更容易维护。
 
 这样做的收益也不只是性能。更重要的是职责拆分会更干净：宿主机负责公网入口、基础 NAT 和端口转发，Pangolin VM 负责站点、证书、身份认证、访问策略和穿透能力。
-
-如果某些服务根本不需要 Pangolin 的应用层能力，那么对应的 TCP 或 UDP 端口也可以直接由 LOHA 转发给目标后端，而不必全部先绕到宿主机上的用户态代理。
 
 ### FAQ 3 上游防火墙后端变化后怎么办
 

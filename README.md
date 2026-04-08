@@ -46,6 +46,12 @@ LOHA's current product boundary is intentionally narrow:
 - It is not currently aimed at full multi-external symmetric return-path behavior, complex routing orchestration, or centralized multi-node policy management.
 - If you only need a tiny number of one-off forwards and are already comfortable maintaining the underlying rules by hand, LOHA may be more structure than you need.
 
+## Runtime Baseline
+
+- Minimum documented runtime baseline: Linux kernel 5.6+, `systemd`, `Python` 3.8+, and `nftables` 0.9.4+.
+- Recommended versions with direct code-level benefit: `Python` 3.11+ and `nftables` 1.0.7+.
+- For Linux kernel and `systemd`, LOHA currently does not require a higher fixed version beyond the documented baseline; prefer a currently vendor-supported LTS release on your distribution.
+
 ## Quick Start
 
 1. Install

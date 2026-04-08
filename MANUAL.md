@@ -223,6 +223,16 @@ The documented runtime baseline is:
 
 One compatibility detail is worth stating explicitly: full apply does not assume every supported `nft` parser accepts the same table-reset syntax. LOHA probes runtime support and chooses a compatible reset command when rebuilding the managed table instead of hard-coding a single `destroy table ...` path.
 
+For operators choosing a new environment rather than inheriting an existing one, the recommendation is best expressed by actual code requirements rather than by anchoring everything to one distribution release:
+
+- minimum documented Linux kernel baseline: 5.6+
+- minimum documented `Python` baseline: 3.8+
+- minimum documented `nftables` baseline: 0.9.4+
+- recommended `Python` version when you can choose it: 3.11+, because LOHA can use the standard-library `tomllib` path directly instead of relying on the extra `tomli` compatibility dependency
+- recommended `nftables` version when you can choose it: 1.0.7+, because native `destroy table ...` support keeps full table rebuild on the simplest path
+- older supported `nftables` parsers are still handled through LOHA's runtime compatibility probe instead of being treated as automatically unsupported
+- for Linux kernel and `systemd`, LOHA currently does not have a stronger fixed-version recommendation above the documented minimum; prefer a currently vendor-supported LTS or stable release on your platform
+
 Common runtime dependencies include:
 
 - `python3`
@@ -454,6 +464,26 @@ Recommended upgrade path:
 4. verify with `loha list` and `nft list table ip loha_port_forwarder`
 
 Normal upgrades do not require a pre-uninstall. Re-running the installer is the expected path.
+
+For routine in-place updates across nearby release versions on a host whose saved config is already correct, the fastest bootstrap path is:
+
+```bash
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh -s -- --non-interactive
+```
+
+That is a good fit when:
+
+- you want the current saved config to be reused as-is
+- you do not need to re-answer the interactive installer prompts
+- you are doing a normal update rather than a topology redesign
+
+If you want to preview that path first, run:
+
+```bash
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh -s -- --non-interactive --dry-run
+```
+
+If you want a version-pinned or fully inspectable upgrade path, prefer the release archive flow instead of `releases/latest`.
 
 ## 7 Daily Use
 
@@ -883,24 +913,26 @@ Without this model, the same complexity usually has to move somewhere else: long
 
 For a tool like LOHA that is meant to manage exposed mappings over time, that trade is usually worth it. The model is intentional: spend a little authorization-state work in exchange for clearer hit semantics, a steadier map-based forwarding path, and a control plane that stays easier to reason about.
 
-### FAQ 2 How Should Pangolin And LOHA Be Split
+### FAQ 2 How Should Traefik-Like Forwarding Software And LOHA Work Together
 
-If Pangolin currently runs directly on the PVE host and also carries a lot of basic ingress forwarding, a cleaner split is often:
+Tools like Traefik, Pangolin, and Nginx Proxy Manager lean more toward application ingress and proxy orchestration.
+
+Using the more feature-rich Pangolin as an example, if it currently runs directly on the PVE host and also carries a lot of basic ingress forwarding, a cleaner collaboration model is often:
 
 1. install LOHA on the host
 2. move Pangolin into its own VM
 3. use LOHA to forward `80/tcp`, `443/tcp`, `51820/udp`, and `21820/udp` to that Pangolin VM
 4. let Pangolin stay focused on web proxying, auth, policy, and tunnel-style access
+5. for the smaller number of ports that really need Pangolin-specific features, also forward them to the Pangolin VM and configure them there
+6. for services that do not need Pangolin's application-layer features, let LOHA forward those ports directly to the target backend
 
-The reason is simple:
+The reason for splitting responsibilities this way is simple:
 
 - LOHA is better suited to host-side L3 and L4 forwarding control
-- Pangolin is better suited to application-layer ingress behavior
+- Pangolin-like tools are better suited to application-layer ingress, proxying, and access policy
 - separating those roles usually gives you cleaner boundaries and easier maintenance
 
 The gain is not only performance. The bigger win is cleaner responsibility split: the host handles public ingress, basic NAT, and port forwarding, while the Pangolin VM handles sites, certificates, identity, access policy, and tunnel features.
-
-If some services do not need Pangolin's application-layer features at all, those TCP or UDP ports can also be forwarded directly by LOHA to the target backend instead of forcing everything through a user-space proxy on the host.
 
 ### FAQ 3 What If The Upstream Firewall Backend Changes Later
 
