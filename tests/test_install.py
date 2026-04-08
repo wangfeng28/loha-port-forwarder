@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from loha.config import normalize_mapping, recommended_config, render_canonical_text
 from loha.control_tx import control_file_lock, read_runtime_state
-from loha.exceptions import ApplyError, ConfigSyntaxError
+from loha.exceptions import ApplyError, ConfigSyntaxError, LohaError
 from loha.history import list_snapshots
 from loha.i18n import build_runtime_i18n
 from loha.install import (
@@ -20,10 +20,13 @@ from loha.install import (
     _confirm_install_execution,
     _deploy_install_files,
     _probe_install_initial_state,
+    _prepare_interactive_stdin,
     _remove_installation_payload,
     _remove_uninstall_data,
+    _reconnect_stdin_to_tty,
     _run_interactive_prechecks,
     _select_install_import_path,
+    _stdin_supports_interaction,
     _service_unit,
     _sync_uninstall_runtime,
     build_parser,
@@ -253,6 +256,37 @@ class InstallTests(unittest.TestCase):
         self.assertEqual("简体中文", runtime.locale_name())
         self.assertEqual("外部接口", runtime.t("wizard.steps.external_ifs.title", "External Interface"))
         self.assertEqual("安装总览", runtime.t("install.summary.title", "Install Summary"))
+
+    def test_stdin_supports_interaction_handles_missing_stream(self):
+        with patch("loha.install.sys.stdin", None):
+            self.assertFalse(_stdin_supports_interaction())
+
+    def test_reconnect_stdin_to_tty_returns_false_when_tty_is_unavailable(self):
+        with patch("loha.install.open", side_effect=OSError("no tty")):
+            self.assertFalse(_reconnect_stdin_to_tty())
+
+    def test_prepare_interactive_stdin_reattaches_to_tty_for_pipe_bootstrap(self):
+        with patch("loha.install._stdin_supports_interaction", return_value=False), patch(
+            "loha.install._reconnect_stdin_to_tty", return_value=True
+        ) as reconnect_mock:
+            _prepare_interactive_stdin(non_interactive=False, runtime=self.runtime)
+        reconnect_mock.assert_called_once_with()
+
+    def test_prepare_interactive_stdin_raises_localized_error_without_terminal(self):
+        runtime = build_runtime_i18n(Path(__file__).resolve().parents[1] / "locales", requested_locale="zh_CN")
+        with patch("loha.install._stdin_supports_interaction", return_value=False), patch(
+            "loha.install._reconnect_stdin_to_tty", return_value=False
+        ):
+            with self.assertRaises(LohaError) as exc:
+                _prepare_interactive_stdin(non_interactive=False, runtime=runtime)
+        self.assertIn("交互提示需要可输入的终端", str(exc.exception))
+
+    def test_prepare_interactive_stdin_skips_reconnect_for_non_interactive_mode(self):
+        with patch("loha.install._stdin_supports_interaction", return_value=False), patch(
+            "loha.install._reconnect_stdin_to_tty"
+        ) as reconnect_mock:
+            _prepare_interactive_stdin(non_interactive=True, runtime=self.runtime)
+        reconnect_mock.assert_not_called()
 
     def test_probe_install_initial_state_prefers_lan_iface_with_detected_networks(self):
         probed = _probe_install_initial_state(recommended_config(), ProbeAdapter())
@@ -1566,10 +1600,48 @@ class InstallTests(unittest.TestCase):
         )
         (etc_dir / "loha.conf").write_text(render_canonical_text(config), encoding="utf-8")
         output = io.StringIO()
-        with patch("loha.install.cmd_install", side_effect=ApplyError("boom")), redirect_stdout(output):
+        with patch("loha.install._prepare_interactive_stdin"), patch(
+            "loha.install.cmd_install", side_effect=ApplyError("boom")
+        ), redirect_stdout(output):
             exit_code = main(["--etc-dir", str(etc_dir), "--prefix", str(temp_dir / "prefix"), "--run-dir", str(temp_dir / "run"), "--systemd-dir", str(temp_dir / "systemd")])
         self.assertEqual(1, exit_code)
         self.assertIn("错误：boom", output.getvalue())
+
+    def test_install_main_reports_missing_interactive_terminal_using_runtime_locale(self):
+        temp_dir = Path(tempfile.mkdtemp())
+        etc_dir = temp_dir / "etc"
+        etc_dir.mkdir(parents=True, exist_ok=True)
+        config = normalize_mapping(
+            {
+                "EXTERNAL_IFS": "eth0",
+                "PRIMARY_EXTERNAL_IF": "eth0",
+                "LISTEN_IPS": "203.0.113.10",
+                "DEFAULT_SNAT_IP": "203.0.113.10",
+                "LAN_IFS": "eth1",
+                "LAN_NETS": "192.168.10.0/24",
+                "PROTECTION_MODE": "backends",
+                "LOCALE": "zh_CN",
+            }
+        )
+        (etc_dir / "loha.conf").write_text(render_canonical_text(config), encoding="utf-8")
+        output = io.StringIO()
+        with patch("loha.install._stdin_supports_interaction", return_value=False), patch(
+            "loha.install._reconnect_stdin_to_tty", return_value=False
+        ), redirect_stdout(output):
+            exit_code = main(
+                [
+                    "--etc-dir",
+                    str(etc_dir),
+                    "--prefix",
+                    str(temp_dir / "prefix"),
+                    "--run-dir",
+                    str(temp_dir / "run"),
+                    "--systemd-dir",
+                    str(temp_dir / "systemd"),
+                ]
+            )
+        self.assertEqual(1, exit_code)
+        self.assertIn("错误：交互提示需要可输入的终端", output.getvalue())
 
 
 if __name__ == "__main__":

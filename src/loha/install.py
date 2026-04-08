@@ -1,6 +1,7 @@
 import argparse
 import socket
 import shutil
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -155,6 +156,39 @@ def _render_messages(i18n: RuntimeI18N, messages: Sequence[LocalizedMessage]) ->
 
 def _render_message(i18n: RuntimeI18N, message: LocalizedMessage) -> str:
     return render_localized_message(message, i18n)
+
+
+def _stdin_supports_interaction() -> bool:
+    stream = sys.stdin
+    if stream is None or not hasattr(stream, "isatty"):
+        return False
+    try:
+        return bool(stream.isatty())
+    except OSError:
+        return False
+
+
+def _reconnect_stdin_to_tty() -> bool:
+    try:
+        tty_stream = open("/dev/tty", "r", encoding=getattr(sys.stdin, "encoding", None) or "utf-8", errors="replace")
+    except OSError:
+        return False
+    sys.stdin = tty_stream
+    return True
+
+
+def _prepare_interactive_stdin(*, non_interactive: bool, runtime: RuntimeI18N) -> None:
+    if non_interactive or _stdin_supports_interaction():
+        return
+    if _reconnect_stdin_to_tty():
+        return
+    raise LohaError(
+        _t(
+            runtime,
+            "common.interactive_stdin_required",
+            "Interactive prompts require a terminal for input. Re-run this command from a terminal, or add --non-interactive.",
+        )
+    )
 
 
 def _step_ok() -> InstallStepResult:
@@ -1314,6 +1348,7 @@ def main(argv=None) -> int:
     )
     runtime = build_runtime_i18n(resolve_locale_directory(paths), requested_locale=read_first_config_value("LOCALE", _candidate_config_paths(paths)))
     try:
+        _prepare_interactive_stdin(non_interactive=bool(getattr(args, "non_interactive", False)), runtime=runtime)
         return cmd_uninstall(args) if args.uninstall else cmd_install(args)
     except KeyboardInterrupt:
         print(_t(runtime, "common.cancelled", "Cancelled."))

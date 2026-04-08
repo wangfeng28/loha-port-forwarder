@@ -51,16 +51,14 @@ LOHA's current product boundary is intentionally narrow:
 1. Install
 
 ```bash
-curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/install.sh | sudo sh
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh
 ```
 
 If you want to inspect the install plan without changing the system first:
 
 ```bash
-curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/install.sh | sudo sh -s -- --dry-run
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh -s -- --dry-run
 ```
-
-The release bootstrap installer downloads `loha-port-forwarder.tar.gz` and `loha-port-forwarder.tar.gz.sha256` from the same GitHub Release, verifies the checksum, unpacks a temporary working tree, and then runs the bundled `install.sh`.
 
 If you prefer a fully inspectable path, download and verify the release archive manually before running the installer. The step-by-step archive flow, checksum verification, and provenance verification examples are documented in [MANUAL.md](./MANUAL.md).
 

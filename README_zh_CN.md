@@ -51,16 +51,15 @@ LOHA 当前的定位很明确：
 1. 安装
 
 ```bash
-curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/install.sh | sudo sh
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh
 ```
 
 如果你想先查看安装计划而不改系统，可以先运行：
 
 ```bash
-curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/install.sh | sudo sh -s -- --dry-run
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh -s -- --dry-run
 ```
 
-这个 release bootstrap 安装器会从同一个 GitHub Release 下载 `loha-port-forwarder.tar.gz` 和 `loha-port-forwarder.tar.gz.sha256`，先校验校验和，再解压到临时目录，最后执行压缩包内自带的 `install.sh`。
 
 如果你更希望先完整检查安装文件，再决定是否执行，请按 [MANUAL_zh_CN.md](./MANUAL_zh_CN.md) 里的手工下载、校验和 provenance 校验流程操作。
 

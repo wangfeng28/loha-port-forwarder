@@ -262,14 +262,16 @@ sudo loha reload --full
 首先从 GitHub Releases 获取安装文件。最快的路径是使用 release bootstrap 安装器：
 
 ```bash
-curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/install.sh | sudo sh
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh
 ```
 
 如果你想先看安装计划而不改系统，可以这样执行：
 
 ```bash
-curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/install.sh | sudo sh -s -- --dry-run
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh -s -- --dry-run
 ```
+
+如果当前命令运行环境没有可交互终端，请改用 `--non-interactive` 非交互流程。
 
 这个 bootstrap 脚本会从同一个 GitHub Release 下载 `loha-port-forwarder.tar.gz` 和 `loha-port-forwarder.tar.gz.sha256`，先做校验和校验，再把压缩包解压到临时工作目录，最后执行其中自带的 `./install.sh`。
 

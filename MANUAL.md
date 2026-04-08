@@ -261,14 +261,16 @@ If those are the center of your requirements, LOHA should not be your main tool.
 Start by obtaining the install files from GitHub Releases. The fastest path is the release bootstrap installer:
 
 ```bash
-curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/install.sh | sudo sh
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh
 ```
 
 If you want to inspect the install plan without changing the system first:
 
 ```bash
-curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/install.sh | sudo sh -s -- --dry-run
+curl -fsSL https://github.com/wangfeng28/loha-port-forwarder/releases/latest/download/installer.sh | sudo sh -s -- --dry-run
 ```
+
+If the command is running without a controlling terminal, use `--non-interactive` instead of the interactive flow.
 
 That bootstrap script downloads `loha-port-forwarder.tar.gz` and `loha-port-forwarder.tar.gz.sha256` from the same GitHub Release, verifies the checksum, unpacks a temporary working tree, and then runs the bundled `./install.sh`.
 

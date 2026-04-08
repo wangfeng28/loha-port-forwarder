@@ -50,8 +50,8 @@ jobs:
           sed \
             -e "s|__GITHUB_REPOSITORY__|${GITHUB_REPOSITORY}|g" \
             -e "s|__RELEASE_TAG__|${GITHUB_REF_NAME}|g" \
-            scripts/release_install.sh.in > dist/install.sh
-          chmod 0755 dist/install.sh
+            scripts/release_install.sh.in > dist/installer.sh
+          chmod 0755 dist/installer.sh
 
       - name: Create GitHub release
         env:
@@ -65,7 +65,7 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             "dist/${ARCHIVE_NAME}" \
             "dist/${ARCHIVE_NAME}.sha256" \
-            "dist/install.sh#install.sh" \
+            "dist/installer.sh#installer.sh" \
             --verify-tag \
             --generate-notes
 
@@ -77,4 +77,4 @@ jobs:
       - name: Attest installer provenance
         uses: actions/attest-build-provenance@v3
         with:
-          subject-path: dist/install.sh
+          subject-path: dist/installer.sh
