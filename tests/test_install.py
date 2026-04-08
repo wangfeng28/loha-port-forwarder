@@ -92,6 +92,9 @@ class UninstallAdapter(RecordingAdapter):
     def command_exists(self, name: str) -> bool:
         return name in {"sysctl", "systemctl", "nft"}
 
+    def nft_table_reset_commands(self, family: str, table: str):
+        return (f"destroy table {family} {table}",)
+
 
 class SysctlAdapter(RecordingAdapter):
     def command_exists(self, name: str) -> bool:
