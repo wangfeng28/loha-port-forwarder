@@ -191,6 +191,8 @@ If the newly rendered result is still compatible with the existing control state
 
 If the loader sees that the control state no longer matches, for example because you changed behavior that affects the control-plane skeleton, it internally upgrades that reload to a full apply. In other words, the command entry point is still the regular reload path for an already running service, but the loader decides whether the lightweight path is still safe.
 
+That means `reload` and `reload --full` still have different entry semantics, but they are not "always two different kernel operations." A regular `reload` first asks whether hot update is still safe; only when the control-plane shape is unchanged does it stay on the lighter path.
+
 For an explicit full rebuild, use:
 
 ```bash
@@ -218,6 +220,8 @@ The documented runtime baseline is:
 - `nftables` 0.9.4+
 - `Python` 3.8+
 - `systemd`
+
+One compatibility detail is worth stating explicitly: full apply does not assume every supported `nft` parser accepts the same table-reset syntax. LOHA probes runtime support and chooses a compatible reset command when rebuilding the managed table instead of hard-coding a single `destroy table ...` path.
 
 Common runtime dependencies include:
 

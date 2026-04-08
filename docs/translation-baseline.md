@@ -105,7 +105,7 @@ Simplified Chinese localization must follow these rules:
 | rp_filter | `rp_filter` | 反向路径过滤 | Keep the kernel parameter name literal. |
 | conntrack | `conntrack` | 连接跟踪表, 并发连接数 | Keep the subsystem name literal. |
 | reload | `reload` / 重新加载 | 重载 | Keep the command literal as `reload`. |
-| reload --full | `reload --full` / 完整重建 | 全量重启 | Keep the command literal untouched. |
+| reload --full | `reload --full` / 完整重建 | 完整重建, 全量重建 | Keep the command literal untouched and prefer rebuild wording over restart wording. |
 | full rebuild | 完整重建 | 全量重建 | Use in prose for the control-plane effect. |
 
 ### Literal Tokens That Stay Untranslated in `zh_CN`

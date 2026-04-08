@@ -1,6 +1,6 @@
 # LOHA Validation Matrix
 
-Updated: 2026-03-27
+Updated: 2026-04-08
 
 ## Purpose
 
@@ -262,7 +262,9 @@ Current coverage:
 
 Currently protected highlights:
 
-- the ruleset starts with idempotent destruction
+- the full ruleset uses a runtime-selected LOHA table reset strategy instead of assuming a single `destroy table ...` syntax path
+- the control-state checksum excludes runtime-selected reset commands so compatible hosts do not lose hot reload only because reset syntax differs
+- base-chain priorities are rendered as explicit numeric values for broader `nft` parser compatibility
 - rendering differences between the `mark` and `label` authorization paths
 - hot swap is allowed when control state is unchanged
 - when only the port-mapping set in `rules.conf` changes, control state stays stable

@@ -1,6 +1,6 @@
 # LOHA `nft` Renderer Architecture
 
-Updated: 2026-03-25
+Updated: 2026-04-08
 
 ## Purpose
 
@@ -26,7 +26,7 @@ The current rendering pipeline is built around [loader.py](../src/loha/loader.py
 2. the loader reads `rules.conf`
 3. the loader validates runtime binding before rendering
 4. the renderer generates the ruleset, map update, and control state
-5. the loader chooses hot reload or full apply based on the control state
+5. the loader chooses hot reload or full apply based on the control state and runtime `nft` table-reset capability
 
 Current boundaries:
 
@@ -85,7 +85,7 @@ The full ruleset starts with a loader-selected table reset command when a reset 
 delete table ip loha_port_forwarder
 ```
 
-On newer `nft` releases this may be emitted as `destroy table ...`; on older releases LOHA falls back to `delete table ...` only when the table already exists. Then it rebuilds the entire `ip loha_port_forwarder` table.
+On newer `nft` releases this may be emitted as `destroy table ...`; on older releases LOHA first probes parser support, then falls back to `delete table ...` only when the table already exists. On a first full apply where no LOHA table exists yet, the reset block may be empty. Then it rebuilds the entire `ip loha_port_forwarder` table.
 
 ### 2. `map_update`
 
@@ -109,11 +109,11 @@ The control state is what decides whether the current change can use hot reload 
 - protection mode and protected networks
 - `CORE_TEMPLATE_CHECKSUM`
 
-If the newly rendered result does not match the control state currently on disk, `reload` is promoted to full apply.
+If the newly rendered result does not match the control state currently on disk, `reload` is promoted to full apply. This promotion happens before `nft_apply`; LOHA does not try hot reload first and only then fall back after a failed map update.
 
 ### 4. `template_checksum`
 
-This is currently produced from the SHA-256 of the full skeleton text and is also stored inside the control state.
+This is currently produced from the SHA-256 of the full skeleton text, excluding loader-selected table-reset commands, and is also stored inside the control state. The reset command is runtime compatibility plumbing; by itself it must not force `reload` to lose the hot-update path.
 
 ## Generated Data Objects
 
@@ -174,12 +174,14 @@ Current authorization differences are contained by helper functions rather than 
 Responsible for:
 
 - jumping into `port_forwarding` only when the destination address matches `@listen_ips`
+- explicit numeric nat priority `-100` instead of relying on symbolic `dstnat`
 
 ### `output`
 
 Responsible for:
 
 - loopback cases where the local machine accesses external IPs used for exposure
+- the same explicit numeric nat priority `-100`, which keeps parser expectations aligned with `prerouting`
 
 ### `postrouting`
 
@@ -188,6 +190,7 @@ Responsible for:
 - default egress SNAT
 - Hairpin NAT
 - return-path NAT for WAN-to-WAN
+- explicit numeric nat priority `100`
 
 ### `forward`
 
@@ -201,6 +204,7 @@ Responsible for:
 - allowing authorized DNAT traffic
 - allowing LAN-initiated egress
 - enforcing protection-scope blocking
+- explicit numeric filter priority `-5`
 
 ## Current Authorization Abstraction
 

@@ -100,7 +100,7 @@ sudo loha port add tcp 8080+9 VM_WEB 18080+9
 - `sudo loha`：交互式菜单，适合第一次上手、偶尔调整和手动维护。
 - CLI：适合脚本和自动化，常见入口包括 `alias`、`port`、`rules render`、`reload`、`config`、`doctor`、`config history` 和 `config rollback`；`--json`、稳定结果/错误分类，以及 `--check` / `--dry-run` 也更方便接入 Ansible 和 AI Agent。控制面写入会串行化处理，所以并发修改要么形成一致结果，要么明确返回锁冲突，而不是悄悄交错覆盖。
 - 配置文件：核心配置保存在 `/etc/loha/loha.conf`，规则保存在 `/etc/loha/rules.conf`。
-- 变更路径：日常增删映射通常使用 `reload`；如果你改的是 `AUTH_MODE` 这类会影响控制面结构的配置，则应使用 `reload --full` 做完整重建。
+- 变更路径：日常增删映射通常使用 `reload`；LOHA 会优先尝试热更新，但如果控制面骨架已经变化，也可能把这次 apply 升级成完整重建。像 `AUTH_MODE` 这类结构性改动，如果你希望“完整重建”这件事显式发生，仍应直接使用 `reload --full`。
 
 ## 全面了解与进阶使用
 
