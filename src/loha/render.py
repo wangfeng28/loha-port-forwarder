@@ -6,6 +6,11 @@ from .exceptions import RulesValidationError
 from .models import CanonicalConfig, RenderContext, RenderedRuleset, RulesFile
 
 
+NFT_DSTNAT_PRIORITY = -100
+NFT_SRCNAT_PRIORITY = 100
+NFT_FORWARD_PRIORITY = -5
+
+
 def _iface_set(csv: str) -> str:
     items = [item for item in csv.split(",") if item]
     return "{ " + ", ".join(f'"{item}"' for item in items) + " }"
@@ -186,6 +191,7 @@ def _elements_block(elements: Sequence[str]) -> str:
 
 
 def _render_ruleset_text(
+    table_reset_commands: Sequence[str],
     define_lines: Sequence[str],
     *,
     dnat_block: str,
@@ -198,9 +204,11 @@ def _render_ruleset_text(
     forward_allow_rule: str,
     protection_rules: str,
 ) -> str:
+    reset_block = "\n".join(table_reset_commands)
+    if reset_block:
+        reset_block += "\n"
     return f"""#!/usr/sbin/nft -f
-destroy table ip {LOHA_NFT_TABLE_NAME}
-{chr(10).join(define_lines)}
+{reset_block}{chr(10).join(define_lines)}
 
 table ip {LOHA_NFT_TABLE_NAME} {{
     map dnat_rules {{
@@ -223,22 +231,22 @@ table ip {LOHA_NFT_TABLE_NAME} {{
     }}
 
     chain prerouting {{
-        type nat hook prerouting priority dstnat; policy accept;
+        type nat hook prerouting priority {NFT_DSTNAT_PRIORITY}; policy accept;
         ip daddr @listen_ips jump port_forwarding
     }}
 
     chain output {{
-        type nat hook output priority dstnat; policy accept;
+        type nat hook output priority {NFT_DSTNAT_PRIORITY}; policy accept;
         ip daddr @listen_ips jump port_forwarding
     }}
 
     chain postrouting {{
-        type nat hook postrouting priority srcnat; policy accept;
+        type nat hook postrouting priority {NFT_SRCNAT_PRIORITY}; policy accept;
 {postrouting_body}
     }}
 
     chain forward {{
-        type filter hook forward priority filter - 5; policy accept;
+        type filter hook forward priority {NFT_FORWARD_PRIORITY}; policy accept;
         ct state invalid drop
 {forward_features_pre}
         ct state established,related accept
@@ -253,7 +261,11 @@ table ip {LOHA_NFT_TABLE_NAME} {{
 """
 
 
-def render_ruleset(context: RenderContext) -> RenderedRuleset:
+def render_ruleset(
+    context: RenderContext,
+    *,
+    table_reset_commands: Sequence[str] = (),
+) -> RenderedRuleset:
     config = context.config
     rules = context.rules
     dnat_elements, protected_backend_hosts = _dnat_elements(config, rules)
@@ -301,6 +313,7 @@ def render_ruleset(context: RenderContext) -> RenderedRuleset:
     protection_rules = _render_protection_rules(config)
 
     skeleton = _render_ruleset_text(
+        table_reset_commands,
         define_lines,
         dnat_block=_elements_block(dnat_elements),
         listen_block=_elements_block(listen_elements),
@@ -313,6 +326,7 @@ def render_ruleset(context: RenderContext) -> RenderedRuleset:
         protection_rules=protection_rules,
     ).replace("__COUNTER_DROP__", _counter_drop(config))
     control_plane_template = _render_ruleset_text(
+        (),
         define_lines,
         dnat_block="",
         listen_block="",

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from .control_tx import control_file_lock, read_desired_state, read_runtime_state, write_runtime_state
+from .constants import LOHA_NFT_TABLE_NAME
 from .exceptions import ApplyError, ConfigValidationError
 from .i18n import RuntimeI18N, build_runtime_i18n_for_paths, render_localized_message
 from .models import DesiredStateSnapshot, LocalizedMessage, Paths, RenderContext, RuntimeStateSnapshot
@@ -24,10 +25,13 @@ class LoaderService:
     def _validate_runtime_binding(self, context: RenderContext) -> None:
         resolve_runtime_binding(context.config.as_dict(), self.adapter)
 
+    def _full_table_reset_commands(self):
+        return self.adapter.nft_table_reset_commands("ip", LOHA_NFT_TABLE_NAME)
+
     def render(self, *, snapshot: Optional[DesiredStateSnapshot] = None):
         context = self.load_context(snapshot=snapshot)
         self._validate_runtime_binding(context)
-        return render_ruleset(context)
+        return render_ruleset(context, table_reset_commands=self._full_table_reset_commands())
 
     def _control_state_matches(self, rendered) -> bool:
         if not self.paths.control_state_file.exists():

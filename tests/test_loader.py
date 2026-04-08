@@ -15,13 +15,15 @@ from loha.config import normalize_mapping
 
 
 class FakeAdapter(SystemAdapter):
-    def __init__(self):
+    def __init__(self, *, destroy_supported=False):
         self.applied = []
         self.ifaces = ("eth0", "eth1", "br0")
         self.iface_ips = {
             "eth0": ("203.0.113.10", "203.0.113.11"),
             "eth1": ("198.51.100.20",),
         }
+        self.destroy_supported = destroy_supported
+        self.tables = set()
 
     def command_exists(self, name: str) -> bool:
         return True
@@ -43,6 +45,14 @@ class FakeAdapter(SystemAdapter):
 
     def nft_apply(self, ruleset: str, *, check_only: bool = False) -> None:
         self.applied.append(("check" if check_only else "apply", ruleset))
+        if not check_only and "table ip loha_port_forwarder {" in ruleset:
+            self.tables.add(("ip", "loha_port_forwarder"))
+
+    def nft_supports_destroy(self, *, family: str = "ip", table: str = "__loha_destroy_probe__") -> bool:
+        return self.destroy_supported
+
+    def nft_table_exists(self, family: str, table: str) -> bool:
+        return (family, table) in self.tables
 
     def systemctl(self, action: str, unit: str = "") -> None:
         raise AssertionError("systemctl should not be used in loader unit tests")
@@ -84,9 +94,32 @@ class LoaderTests(unittest.TestCase):
         service = LoaderService(paths=paths, adapter=adapter)
         first_message = service.apply(mode="full")
         self.assertIn("Full ruleset initialized successfully", first_message)
-        self.assertIn("destroy table ip loha_port_forwarder", adapter.applied[0][1])
+        self.assertNotIn("delete table ip loha_port_forwarder", adapter.applied[0][1])
+        self.assertNotIn("destroy table ip loha_port_forwarder", adapter.applied[0][1])
         second_message = service.apply(mode="reload")
         self.assertIn("Mappings hot-swapped successfully", second_message)
+
+    def test_full_apply_uses_destroy_when_supported(self):
+        paths = self._paths()
+        adapter = FakeAdapter(destroy_supported=True)
+        self._write_fixture(paths)
+        service = LoaderService(paths=paths, adapter=adapter)
+
+        service.apply(mode="full")
+
+        self.assertIn("destroy table ip loha_port_forwarder", adapter.applied[0][1])
+
+    def test_second_full_apply_uses_delete_when_destroy_is_unavailable(self):
+        paths = self._paths()
+        adapter = FakeAdapter()
+        self._write_fixture(paths)
+        service = LoaderService(paths=paths, adapter=adapter)
+
+        service.apply(mode="full")
+        self._write_fixture(paths, config_overrides={"AUTH_MODE": "label", "DNAT_MARK": "", "DNAT_LABEL": "56"})
+        service.apply(mode="full")
+
+        self.assertIn("delete table ip loha_port_forwarder", adapter.applied[1][1])
 
     def test_auth_mode_change_forces_full(self):
         paths = self._paths()
@@ -108,7 +141,7 @@ class LoaderTests(unittest.TestCase):
         message = service.apply(mode="reload")
         self.assertIn("Mappings hot-swapped successfully", message)
         self.assertEqual(2, len(adapter.applied))
-        self.assertNotIn("destroy table ip loha_port_forwarder", adapter.applied[1][1])
+        self.assertNotIn("delete table ip loha_port_forwarder", adapter.applied[1][1])
         self.assertIn("8081", adapter.applied[1][1])
 
     def test_reload_refreshes_debug_ruleset_snapshot(self):
@@ -140,7 +173,7 @@ class LoaderTests(unittest.TestCase):
         message = service.apply(mode="reload")
         self.assertIn("Mappings hot-swapped successfully", message)
         self.assertEqual(2, len(adapter.applied))
-        self.assertNotIn("destroy table ip loha_port_forwarder", adapter.applied[1][1])
+        self.assertNotIn("delete table ip loha_port_forwarder", adapter.applied[1][1])
         self.assertIn("203.0.113.11", adapter.applied[1][1])
 
     def test_default_snat_change_forces_full_reload(self):
@@ -165,7 +198,7 @@ class LoaderTests(unittest.TestCase):
         message = service.apply(mode="reload")
         self.assertIn("Full ruleset initialized successfully", message)
         self.assertEqual(2, len(adapter.applied))
-        self.assertIn("destroy table ip loha_port_forwarder", adapter.applied[1][1])
+        self.assertIn("delete table ip loha_port_forwarder", adapter.applied[1][1])
 
     def test_external_binding_shift_forces_full_reload(self):
         paths = self._paths()
@@ -186,7 +219,7 @@ class LoaderTests(unittest.TestCase):
         self.assertIn("Full ruleset initialized successfully", message)
         self.assertEqual(2, len(adapter.applied))
         self.assertIn('define PRIMARY_EXTERNAL_IF = "eth1"', adapter.applied[1][1])
-        self.assertIn("destroy table ip loha_port_forwarder", adapter.applied[1][1])
+        self.assertIn("delete table ip loha_port_forwarder", adapter.applied[1][1])
 
     def test_runtime_binding_failure_blocks_nft_apply(self):
         paths = self._paths()

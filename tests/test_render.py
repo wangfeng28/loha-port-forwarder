@@ -29,15 +29,30 @@ def base_config(**overrides):
 
 
 class RenderTests(unittest.TestCase):
-    def test_full_ruleset_starts_with_idempotent_table_destroy(self):
+    def test_full_ruleset_respects_explicit_table_reset_commands(self):
+        config = base_config(AUTH_MODE="mark", DNAT_MARK="0x10000000")
+        rules = parse_rules_text("ALIAS\tVM_WEB\t192.168.10.20\nPORT\ttcp\t8080\tVM_WEB\t80\n")
+        rendered = render_ruleset(
+            RenderContext(config, rules),
+            table_reset_commands=("delete table ip loha_port_forwarder",),
+        ).full_ruleset
+        self.assertIn("delete table ip loha_port_forwarder", rendered)
+        self.assertLess(
+            rendered.index("delete table ip loha_port_forwarder"),
+            rendered.index("table ip loha_port_forwarder {"),
+        )
+
+    def test_full_ruleset_uses_numeric_priorities_for_older_nft_parsers(self):
         config = base_config(AUTH_MODE="mark", DNAT_MARK="0x10000000")
         rules = parse_rules_text("ALIAS\tVM_WEB\t192.168.10.20\nPORT\ttcp\t8080\tVM_WEB\t80\n")
         rendered = render_ruleset(RenderContext(config, rules)).full_ruleset
-        self.assertIn("destroy table ip loha_port_forwarder", rendered)
-        self.assertLess(
-            rendered.index("destroy table ip loha_port_forwarder"),
-            rendered.index("table ip loha_port_forwarder {"),
-        )
+        self.assertIn("type nat hook prerouting priority -100; policy accept;", rendered)
+        self.assertIn("type nat hook output priority -100; policy accept;", rendered)
+        self.assertIn("type nat hook postrouting priority 100; policy accept;", rendered)
+        self.assertIn("type filter hook forward priority -5; policy accept;", rendered)
+        self.assertNotIn("priority dstnat", rendered)
+        self.assertNotIn("priority srcnat", rendered)
+        self.assertNotIn("priority filter - 5", rendered)
 
     def test_mark_mode_contains_miss_cleanup_and_mark_gating(self):
         config = base_config(AUTH_MODE="mark", DNAT_MARK="0x10000000")

@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 from ipaddress import IPv4Interface
@@ -5,6 +6,16 @@ from pathlib import Path
 from typing import Iterable, Optional, Sequence, Set, Tuple
 
 from .exceptions import ApplyError
+
+
+VERSION_RE = re.compile(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?")
+
+
+def _parse_version_tuple(text: str) -> Tuple[int, ...]:
+    match = VERSION_RE.search(text)
+    if not match:
+        return ()
+    return tuple(int(group or "0", 10) for group in match.groups())
 
 
 class SystemAdapter:
@@ -43,6 +54,36 @@ class SystemAdapter:
         temp_path = path.with_name(path.name + ".tmp")
         temp_path.write_text(text, encoding="utf-8")
         temp_path.replace(path)
+
+    def nft_version(self) -> Tuple[int, ...]:
+        if not self.command_exists("nft"):
+            return ()
+        result = self.run(["nft", "--version"], check=False)
+        version_text = result.stdout.strip() or result.stderr.strip()
+        return _parse_version_tuple(version_text)
+
+    def nft_supports_destroy(self, *, family: str = "ip", table: str = "__loha_destroy_probe__") -> bool:
+        if not self.command_exists("nft"):
+            return False
+        result = self.run(
+            ["nft", "-c", "-f", "-"],
+            input_text=f"destroy table {family} {table}\n",
+            check=False,
+        )
+        return result.returncode == 0
+
+    def nft_table_exists(self, family: str, table: str) -> bool:
+        if not self.command_exists("nft"):
+            return False
+        result = self.run(["nft", "list", "table", family, table], check=False)
+        return result.returncode == 0
+
+    def nft_table_reset_commands(self, family: str, table: str) -> Tuple[str, ...]:
+        if self.nft_supports_destroy(family=family, table=table):
+            return (f"destroy table {family} {table}",)
+        if self.nft_table_exists(family, table):
+            return (f"delete table {family} {table}",)
+        return ()
 
 
 class SubprocessSystemAdapter(SystemAdapter):

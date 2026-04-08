@@ -79,13 +79,13 @@ The renderer returns `RenderedRuleset` from [models.py](../src/loha/models.py):
 
 ### 1. `full_ruleset`
 
-The full ruleset starts with an idempotent:
+The full ruleset starts with a loader-selected table reset command when a reset is required:
 
 ```nft
-destroy table ip loha_port_forwarder
+delete table ip loha_port_forwarder
 ```
 
-Then it rebuilds the entire `ip loha_port_forwarder` table.
+On newer `nft` releases this may be emitted as `destroy table ...`; on older releases LOHA falls back to `delete table ...` only when the table already exists. Then it rebuilds the entire `ip loha_port_forwarder` table.
 
 ### 2. `map_update`
 

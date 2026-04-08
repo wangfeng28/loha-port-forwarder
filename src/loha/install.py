@@ -954,6 +954,13 @@ def _run_best_effort(adapter: SystemAdapter, argv: Sequence[str]) -> None:
     adapter.run(argv, check=False)
 
 
+def _run_best_effort_nft_table_remove(adapter: SystemAdapter, family: str, table: str) -> None:
+    commands = adapter.nft_table_reset_commands(family, table)
+    for command in commands:
+        _run_best_effort(adapter, ["nft", *command.split()])
+        return
+
+
 def _remove_installation_payload(
     paths: Paths,
     *,
@@ -1024,13 +1031,14 @@ def _sync_uninstall_runtime(
     if dry_run:
         print(_t(i18n, "install.dry_run.stop", "[dry-run] systemctl stop {unit}", unit=unit_name))
         print(_t(i18n, "install.dry_run.disable", "[dry-run] systemctl disable {unit}", unit=unit_name))
-        print(_t(i18n, "install.dry_run.nft_destroy", f"[dry-run] nft destroy table ip {LOHA_NFT_TABLE_NAME}"))
+        for command in adapter.nft_table_reset_commands("ip", LOHA_NFT_TABLE_NAME):
+            print(_t(i18n, "install.dry_run.nft_destroy", f"[dry-run] nft {command}"))
         print(_t(i18n, "install.dry_run.daemon_reload", "[dry-run] systemctl daemon-reload"))
         print(_t(i18n, "install.dry_run.sysctl", "[dry-run] sysctl --system"))
         return
     _run_best_effort(adapter, ["systemctl", "stop", unit_name])
     _run_best_effort(adapter, ["systemctl", "disable", unit_name])
-    _run_best_effort(adapter, ["nft", "destroy", "table", "ip", LOHA_NFT_TABLE_NAME])
+    _run_best_effort_nft_table_remove(adapter, "ip", LOHA_NFT_TABLE_NAME)
     _run_best_effort(adapter, ["sysctl", "--system"])
     _run_best_effort(adapter, ["systemctl", "daemon-reload"])
 
