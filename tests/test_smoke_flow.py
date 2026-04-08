@@ -122,7 +122,7 @@ class FakeSmokeAdapter(SystemAdapter):
             return subprocess.CompletedProcess(argv, 0, stdout="loha.service enabled\n", stderr="")
         if len(command) >= 2 and command[0] == "systemctl" and command[1] in {"is-active", "is-enabled"}:
             unit = command[-1]
-            stem = unit.removesuffix(".service")
+            stem = unit[:-8] if unit.endswith(".service") else unit
             name = f"{stem}.service"
             state_set = self.active_units if command[1] == "is-active" else self.enabled_units
             return subprocess.CompletedProcess(argv, 0 if name in state_set else 3, stdout="", stderr="")
