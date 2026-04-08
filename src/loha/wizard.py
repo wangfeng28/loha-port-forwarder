@@ -136,10 +136,12 @@ def build_summary(
             "Protection scope: exposed backends and user-specified protected networks",
         ),
     }[config["PROTECTION_MODE"]]
+    hairpin_state = config["ENABLE_HAIRPIN"]
+    hairpin_state_key = f"common.state.{hairpin_state}"
     exposure_lines = [
         protection_line,
         f"{_t(i18n, 'wizard.summary.fields.hairpin', 'Hairpin NAT')}: "
-        f"{_t(i18n, f'common.state.{config['ENABLE_HAIRPIN']}', config['ENABLE_HAIRPIN'])}",
+        f"{_t(i18n, hairpin_state_key, hairpin_state)}",
     ]
     if config["PROTECTION_MODE"] in {"nets", "both"}:
         exposure_lines.insert(
